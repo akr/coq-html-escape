@@ -4,6 +4,8 @@ Require Import Ascii.
 
 Local Open Scope string_scope.
 
+Local Notation "c :: str" := (String c str) (at level 60, right associativity).
+
 Definition eqascii a b :=
   let: Ascii a1 a2 a3 a4 a5 a6 a7 a8 := a in
   let: Ascii b1 b2 b3 b4 b5 b6 b7 b8 := b in
@@ -60,14 +62,14 @@ Definition downcase_char (ch : ascii) :=
 
 Fixpoint seq_of_str str :=
   match str with
-  | EmptyString => nil
-  | String c str' => c :: seq_of_str str'
+  | "" => nil
+  | c :: str' => cons c (seq_of_str str')
   end.
 
 Fixpoint str_of_seq s :=
   match s with
-  | nil => EmptyString
-  | c :: s' => String c (str_of_seq s')
+  | nil => ""
+  | cons c s' => c :: (str_of_seq s')
   end.
 
 Lemma str_of_seq_of_str str : str_of_seq (seq_of_str str) = str.
@@ -125,27 +127,6 @@ Proof.
   by case: n => [|n]; rewrite IH.
 Qed.
 
-Definition str_of_char c := String c EmptyString.
-
-Definition str_of_asciicode n := str_of_char (ascii_of_nat n).
-
-Local Notation "c :: str" := (String c str) (at level 60, right associativity).
-
-Fixpoint html_escape str :=
-  match str with
-  | "" => ""
-  | c :: str' =>
-      (if c == "&"%char then "&amp;"
-      else if c == "<"%char then "&lt;"
-      else if c == ">"%char then "&gt;"
-      else if c == """"%char then "&quot;"
-      else if c == "'"%char then "&#39;"
-      else str_of_char c) ++
-      html_escape str'
-  end.
-
-Goal html_escape "abc&def<>""'" = "abc&amp;def&lt;&gt;&quot;&#39;". by []. Qed.
-
 Definition firstn n str := substring 0 n str.
 
 Fixpoint aftern n str {struct str} :=
@@ -201,6 +182,25 @@ Proof.
     by rewrite cat_take_drop.
   by rewrite size_drop.
 Qed.
+
+Definition str_of_char c := String c EmptyString.
+
+Definition str_of_asciicode n := str_of_char (ascii_of_nat n).
+
+Fixpoint html_escape str :=
+  match str with
+  | "" => ""
+  | c :: str' =>
+      (if c == "&"%char then "&amp;"
+      else if c == "<"%char then "&lt;"
+      else if c == ">"%char then "&gt;"
+      else if c == """"%char then "&quot;"
+      else if c == "'"%char then "&#39;"
+      else str_of_char c) ++
+      html_escape str'
+  end.
+
+Goal html_escape "abc&def<>""'" = "abc&amp;def&lt;&gt;&quot;&#39;". by []. Qed.
 
 Fixpoint start_with prefix str :=
   match prefix with

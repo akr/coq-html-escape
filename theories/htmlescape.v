@@ -17,8 +17,8 @@ Proof.
     case: a => a1 a2 a3 a4 a5 a6 a7 a8.
     case: b => b1 b2 b3 b4 b5 b6 b7 b8.
     rewrite /eqascii.
-    do 7 (rewrite andbC => /andP; case; move/eqP => ->).
-    by move/eqP => ->.
+    do 7 rewrite andbC => /andP [] /eqP ->.
+    by move=> /eqP ->.
   move=> ->.
   case: b => b1 b2 b3 b4 b5 b6 b7 b8 /=.
   by do 8 rewrite eq_refl.

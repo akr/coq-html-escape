@@ -76,6 +76,38 @@ Proof. by elim: str => [|c str /= ->]. Qed.
 Lemma seq_of_str_of_seq s : seq_of_str (str_of_seq s) = s.
 Proof. by elim: s => [|c s /= ->]. Qed.
 
+Fixpoint eqstr a b :=
+  match a, b with
+  | EmptyString, EmptyString => true
+  | String ca a', String cb b' => (ca == cb) && eqstr a' b'
+  | _, _ => false
+  end.
+
+Lemma eqstr_eq a b : (eqstr (str_of_seq a) (str_of_seq b)) = (a == b).
+Proof.
+  elim: b a; first by case.
+  move=> c s' IH [] /=.
+    by [].
+  move=> c' s.
+  by rewrite IH.
+Qed.
+
+Lemma eqstrP : Equality.axiom eqstr.
+Proof.
+  move=> a' b'.
+  rewrite -(str_of_seq_of_str a') -(str_of_seq_of_str b').
+  move: (seq_of_str a') (seq_of_str b') => a b.
+  clear a' b'.
+  rewrite eqstr_eq.
+  apply: (iffP idP).
+    by move=> /eqP ->.
+  rewrite -{2}(seq_of_str_of_seq a) => ->.
+  by rewrite seq_of_str_of_seq.
+Qed.
+
+Canonical string_eqMixin := EqMixin eqstrP.
+Canonical string_eqType := Eval hnf in EqType string string_eqMixin.
+
 Lemma append_cat (s1 s2 : seq ascii) :
   (str_of_seq s1) ++ (str_of_seq s2) = str_of_seq (s1 ++ s2).
 Proof. by elim: s1 => [|c s /= ->]. Qed.

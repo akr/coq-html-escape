@@ -97,10 +97,12 @@ Definition str_of_char c := String c EmptyString.
 
 Definition str_of_asciicode n := str_of_char (ascii_of_nat n).
 
+Local Notation "c :: str" := (String c str) (at level 60, right associativity).
+
 Fixpoint html_escape str :=
   match str with
-  | EmptyString => EmptyString
-  | String c str' =>
+  | "" => ""
+  | c :: str' =>
       (if c == "&"%char then "&amp;"
       else if c == "<"%char then "&lt;"
       else if c == ">"%char then "&gt;"
@@ -111,8 +113,6 @@ Fixpoint html_escape str :=
   end.
 
 Goal html_escape "abc&def<>""'" = "abc&amp;def&lt;&gt;&quot;&#39;". by []. Qed.
-
-Local Notation "c :: str" := (String c str) (at level 60, right associativity).
 
 Definition firstn n str := substring 0 n str.
 

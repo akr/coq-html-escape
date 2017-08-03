@@ -297,20 +297,13 @@ Fixpoint html_unescape str :=
 
 Lemma html_unescape_escape str : html_unescape (html_escape str) = str.
 Proof.
-  elim: str.
-    by [].
-  move=> c str IH /=.
-  case: ifP; first by move/eqP => -> /=; rewrite after0 IH.
-  move/negbT => not_amp.
-  case: ifP; first by move/eqP => -> /=; rewrite after0 IH.
-  move/negbT => not_lt.
-  case: ifP; first by move/eqP => -> /=; rewrite after0 IH.
-  move/negbT => not_gt.
-  case: ifP; first by move/eqP => -> /=; rewrite after0 IH.
-  move/negbT => not_quot.
-  case: ifP; first by move/eqP => -> /=; rewrite after0 IH.
-  move/negbT => not_apos.
-  rewrite [str_of_char _ ++ _]/=.
+  elim: str => [|c str IH /=]; first by [].
+  case: eqP => [-> /=|/eqP not_amp]; first by rewrite after0 IH.
+  case: eqP => [-> /=|/eqP not_lt]; first by rewrite after0 IH.
+  case: eqP => [-> /=|/eqP not_gt]; first by rewrite after0 IH.
+  case: eqP => [-> /=|/eqP not_quot]; first by rewrite after0 IH.
+  case: eqP => [-> /=|/eqP not_apos]; first by rewrite after0 IH.
+  rewrite [_ ++ _]/=.
   move: not_amp not_lt not_gt not_quot not_apos.
   case: c => b1 b2 b3 b4 b5 b6 b7 b8.
   case: b1; case: b2; case: b3; case: b4;

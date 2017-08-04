@@ -29,7 +29,7 @@ Qed.
 Canonical ascii_eqMixin := EqMixin eqasciiP.
 Canonical ascii_eqType := Eval hnf in EqType ascii ascii_eqMixin.
 
-Definition downcase_char (ch : ascii) :=
+Definition downcase_ascii (ch : ascii) :=
   match ch with
   | "A"%char => "a"%char
   | "B"%char => "b"%char
@@ -223,7 +223,7 @@ Fixpoint start_with_ci prefix str :=
       match str with
       | "" => None
       | sch & str' =>
-          if downcase_char pch == downcase_char sch then
+          if downcase_ascii pch == downcase_ascii sch then
             if start_with_ci prefix' str' is Some n then Some n.+1 else None
           else None
       end

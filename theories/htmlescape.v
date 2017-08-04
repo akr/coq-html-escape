@@ -4,7 +4,7 @@ Require Import Ascii.
 
 Local Open Scope string_scope.
 
-Local Notation "c :: str" := (String c str) (at level 60, right associativity).
+Local Notation "c & str" := (String c str) (at level 60, right associativity).
 
 Definition eqascii a b :=
   let: Ascii a1 a2 a3 a4 a5 a6 a7 a8 := a in
@@ -63,13 +63,13 @@ Definition downcase_char (ch : ascii) :=
 Fixpoint seq_of_str str :=
   match str with
   | "" => nil
-  | c :: str' => cons c (seq_of_str str')
+  | c & str' => c :: (seq_of_str str')
   end.
 
 Fixpoint str_of_seq s :=
   match s with
   | nil => ""
-  | cons c s' => c :: (str_of_seq s')
+  | c :: s' => c & (str_of_seq s')
   end.
 
 Lemma str_of_seq_of_str str : str_of_seq (seq_of_str str) = str.
@@ -80,8 +80,8 @@ Proof. by elim: s => [|c s /= ->]. Qed.
 
 Fixpoint eqstr a b :=
   match a, b with
-  | EmptyString, EmptyString => true
-  | String ca a', String cb b' => (ca == cb) && eqstr a' b'
+  | "", "" => true
+  | a0 & a', b0 & b' => (a0 == b0) && eqstr a' b'
   | _, _ => false
   end.
 
@@ -127,19 +127,19 @@ Proof.
   by case: n => [|n]; rewrite IH.
 Qed.
 
-Definition firstn n str := substring 0 n str.
+Definition stake n str := substring 0 n str.
 
-Fixpoint aftern n str {struct str} :=
+Fixpoint sdrop n str {struct str} :=
   match n with
   | 0 => str
   | n'.+1 =>
       match str with
       | "" => str
-      | ch :: str' => aftern n' str'
+      | ch & str' => sdrop n' str'
       end
   end.
 
-Lemma aftern_drop n s : aftern n (str_of_seq s) = str_of_seq (drop n s).
+Lemma sdrop_drop n s : sdrop n (str_of_seq s) = str_of_seq (drop n s).
 Proof.
   elim: s n.
     by move=> [|n].
@@ -149,12 +149,12 @@ Proof.
   by rewrite IH.
 Qed.
 
-Lemma aftern_substring n str : aftern n str = substring n (length str - n) str.
+Lemma sdrop_substring n str : sdrop n str = substring n (length str - n) str.
 Proof.
   rewrite -(str_of_seq_of_str str).
   move: (seq_of_str str) => s.
   clear str.
-  rewrite aftern_drop.
+  rewrite sdrop_drop.
   rewrite substring_take_drop.
   congr (str_of_seq _).
   rewrite length_size.
@@ -163,17 +163,17 @@ Proof.
   by rewrite size_drop.
 Qed.
 
-Lemma after0 str : aftern 0 str = str.
+Lemma sdrop0 str : sdrop 0 str = str.
 Proof.
   rewrite -(str_of_seq_of_str str).
   move: (seq_of_str str) => s.
   clear str.
-  by rewrite aftern_drop drop0.
+  by rewrite sdrop_drop drop0.
 Qed.
 
-Lemma firstn_aftern n str : firstn n str ++ aftern n str = str.
+Lemma stake_sdrop n str : stake n str ++ sdrop n str = str.
 Proof.
-  rewrite /firstn aftern_substring -(str_of_seq_of_str str).
+  rewrite /stake sdrop_substring -(str_of_seq_of_str str).
   move: (seq_of_str str) => s.
   clear str.
   rewrite 2!substring_take_drop append_cat.
@@ -190,7 +190,7 @@ Definition str_of_asciicode n := str_of_char (ascii_of_nat n).
 Fixpoint html_escape str :=
   match str with
   | "" => ""
-  | c :: str' =>
+  | c & str' =>
       (if c == "&"%char then "&amp;"
       else if c == "<"%char then "&lt;"
       else if c == ">"%char then "&gt;"
@@ -205,10 +205,10 @@ Goal html_escape "abc&def<>""'" = "abc&amp;def&lt;&gt;&quot;&#39;". by []. Qed.
 Fixpoint start_with prefix str :=
   match prefix with
   | "" => Some 0
-  | pch :: prefix' =>
+  | pch & prefix' =>
       match str with
       | "" => None
-      | sch :: str' =>
+      | sch & str' =>
           if pch == sch then
             if start_with prefix' str' is Some n then Some n.+1 else None
           else None
@@ -219,10 +219,10 @@ Fixpoint start_with prefix str :=
 Fixpoint start_with_ci prefix str :=
   match prefix with
   | "" => Some 0
-  | pch :: prefix' =>
+  | pch & prefix' =>
       match str with
       | "" => None
-      | sch :: str' =>
+      | sch & str' =>
           if downcase_char pch == downcase_char sch then
             if start_with_ci prefix' str' is Some n then Some n.+1 else None
           else None
@@ -246,7 +246,7 @@ Definition nat_of_digit (ch : ascii) :=
 
 Fixpoint decode_decimal_prefix str :=
   match str with
-  | ch :: str' => 
+  | ch & str' => 
       if nat_of_digit ch is Some d then
         let (n, len) := decode_decimal_prefix str' in
         (d * 10 ^ len + n, len.+1)
@@ -284,7 +284,7 @@ Definition nat_of_hexdig (ch : ascii) :=
 
 Fixpoint decode_hex_prefix str :=
   match str with
-  | ch :: str' => 
+  | ch & str' => 
       if nat_of_hexdig ch is Some d then
         let (n, len) := decode_hex_prefix str' in
         (d * 16 ^ len + n, len.+1)
@@ -296,45 +296,45 @@ Fixpoint decode_hex_prefix str :=
 Fixpoint html_unescape str :=
   match str with
   | "" => ""
-  | "&" :: str1 =>
-      if start_with "amp;" str1 is Some n then "&" ++ html_unescape (aftern n str1)
-      else if start_with "lt;" str1 is Some n then "<" ++ html_unescape (aftern n str1)
-      else if start_with "gt;" str1 is Some n then ">" ++ html_unescape (aftern n str1)
-      else if start_with "quot;" str1 is Some n then """" ++ html_unescape (aftern n str1)
+  | "&" & str1 =>
+      if start_with "amp;" str1 is Some n then "&" ++ html_unescape (sdrop n str1)
+      else if start_with "lt;" str1 is Some n then "<" ++ html_unescape (sdrop n str1)
+      else if start_with "gt;" str1 is Some n then ">" ++ html_unescape (sdrop n str1)
+      else if start_with "quot;" str1 is Some n then """" ++ html_unescape (sdrop n str1)
       else if start_with_ci "#x" str1 is Some n1 then
-        let str2 := aftern n1 str1 in
+        let str2 := sdrop n1 str1 in
         let: (m, n2) := decode_hex_prefix str2 in
         if 0 < n2 then
-          let str3 := aftern n2 str2 in
+          let str3 := sdrop n2 str2 in
           if start_with ";" str3 is Some n3 then
-            str_of_asciicode m ++ html_unescape (aftern n3 str3)
+            str_of_asciicode m ++ html_unescape (sdrop n3 str3)
           else
-            "&" :: html_unescape str1
+            "&" & html_unescape str1
         else
-          "&" :: html_unescape str1
+          "&" & html_unescape str1
       else if start_with "#" str1 is Some n1 then
-        let str2 := aftern n1 str1 in
+        let str2 := sdrop n1 str1 in
         let: (m, n2) := decode_decimal_prefix str2 in
         if 0 < n2 then
-          let str3 := aftern n2 str2 in
+          let str3 := sdrop n2 str2 in
           if start_with ";" str3 is Some n3 then
-            str_of_asciicode m ++ html_unescape (aftern n3 str3)
+            str_of_asciicode m ++ html_unescape (sdrop n3 str3)
           else
-            "&" :: html_unescape str1
+            "&" & html_unescape str1
         else
-          "&" :: html_unescape str1
-      else "&" :: html_unescape str1
-  | ch :: str1 => str_of_char ch ++ html_unescape str1
+          "&" & html_unescape str1
+      else "&" & html_unescape str1
+  | ch & str1 => str_of_char ch ++ html_unescape str1
   end.
 
 Lemma html_unescape_escape str : html_unescape (html_escape str) = str.
 Proof.
   elim: str => [|c str IH /=]; first by [].
-  case: eqP => [-> /=|/eqP not_amp]; first by rewrite after0 IH.
-  case: eqP => [-> /=|/eqP not_lt]; first by rewrite after0 IH.
-  case: eqP => [-> /=|/eqP not_gt]; first by rewrite after0 IH.
-  case: eqP => [-> /=|/eqP not_quot]; first by rewrite after0 IH.
-  case: eqP => [-> /=|/eqP not_apos]; first by rewrite after0 IH.
+  case: eqP => [-> /=|/eqP not_amp]; first by rewrite sdrop0 IH.
+  case: eqP => [-> /=|/eqP not_lt]; first by rewrite sdrop0 IH.
+  case: eqP => [-> /=|/eqP not_gt]; first by rewrite sdrop0 IH.
+  case: eqP => [-> /=|/eqP not_quot]; first by rewrite sdrop0 IH.
+  case: eqP => [-> /=|/eqP not_apos]; first by rewrite sdrop0 IH.
   rewrite [_ ++ _]/=.
   move: not_amp not_lt not_gt not_quot not_apos.
   case: c => b1 b2 b3 b4 b5 b6 b7 b8.

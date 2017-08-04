@@ -183,20 +183,62 @@ Proof.
   by rewrite size_drop.
 Qed.
 
+Definition sindex c str :=
+  let s := seq_of_str str in
+  let i := seq.index c s in
+  if i < size s then
+    Some i
+  else
+    None.
+
 Definition str_of_char c := String c EmptyString.
 
 Definition str_of_asciicode n := str_of_char (ascii_of_nat n).
+
+Definition assoc_if {A B : Type} (p : A -> bool) (al : seq (A * B)) : option (A * B) :=
+  List.find (p \o fst) al.
+
+Definition rassoc_if {A B : Type} (p : B -> bool) (al : seq (A * B)) : option (A * B) :=
+  List.find (p \o snd) al.
+
+Definition assoc {A : eqType} {B : Type} (a : A) (al : seq (A * B)) : option (A * B) :=
+  assoc_if (pred1 a) al.
+
+Definition rassoc {A : Type} {B : eqType} (b : B) (al : seq (A * B)) : option (A * B) :=
+  rassoc_if (pred1 b) al.
+
+Lemma associf_filter A B (p : A -> bool) (al : seq (A * B)) :
+  assoc_if p al = if filter (p \o fst) al is x :: _ then Some x else None.
+Proof.
+  elim: al => [|y al IH /=]; first by [].
+  case: ifP; first by [].
+  by rewrite -IH.
+Qed.
+
+Lemma rassocif_filter A B (p : B -> bool) (al : seq (A * B)) :
+  rassoc_if p al = if filter (p \o snd) al is x :: _ then Some x else None.
+Proof.
+  elim: al => [|y al IH /=]; first by [].
+  case: ifP; first by [].
+  by rewrite -IH.
+Qed.
+
+Definition html_escape_al := [::
+  ("&"%char, "amp");
+  ("<"%char, "lt");
+  (">"%char, "gt");
+  (""""%char, "quot");
+  ("'"%char, "#39")
+].
 
 Fixpoint html_escape str :=
   match str with
   | "" => ""
   | c & str' =>
-      (if c == "&"%char then "&amp;"
-      else if c == "<"%char then "&lt;"
-      else if c == ">"%char then "&gt;"
-      else if c == """"%char then "&quot;"
-      else if c == "'"%char then "&#39;"
-      else str_of_char c) ++
+      (if assoc c html_escape_al is Some (_, e) then
+        "&" ++ e ++ ";"
+      else
+        str_of_char c) ++
       html_escape str'
   end.
 
@@ -293,48 +335,60 @@ Fixpoint decode_hex_prefix str :=
   | "" => (0, 0)
   end.
 
+Definition hex_entref str :=
+  if start_with_ci "#x" str is Some n1 then
+    let str2 := sdrop n1 str in
+    let: (m, n2) := decode_hex_prefix str2 in
+    if (0 < n2) && (n2 == length str2) then
+      Some (ascii_of_nat m)
+    else None
+  else
+    None.
+
+Definition dec_entref str :=
+  if start_with_ci "#" str is Some n1 then
+    let str2 := sdrop n1 str in
+    let: (m, n2) := decode_decimal_prefix str2 in
+    if (0 < n2) && (n2 == length str2) then
+      Some (ascii_of_nat m)
+    else None
+  else
+    None.
+
+Definition html_unescape_al := [::
+  ("&"%char, "amp");
+  ("<"%char, "lt");
+  (">"%char, "gt");
+  (""""%char, "quot")
+].
+
 Fixpoint html_unescape str :=
   match str with
   | "" => ""
   | "&" & str1 =>
-      if start_with "amp;" str1 is Some n then "&" ++ html_unescape (sdrop n str1)
-      else if start_with "lt;" str1 is Some n then "<" ++ html_unescape (sdrop n str1)
-      else if start_with "gt;" str1 is Some n then ">" ++ html_unescape (sdrop n str1)
-      else if start_with "quot;" str1 is Some n then """" ++ html_unescape (sdrop n str1)
-      else if start_with_ci "#x" str1 is Some n1 then
-        let str2 := sdrop n1 str1 in
-        let: (m, n2) := decode_hex_prefix str2 in
-        if 0 < n2 then
-          let str3 := sdrop n2 str2 in
-          if start_with ";" str3 is Some n3 then
-            str_of_asciicode m ++ html_unescape (sdrop n3 str3)
-          else
-            "&" & html_unescape str1
+      if sindex ";"%char str1 is Some n then
+        let entref := stake n str1 in
+        if rassoc entref html_unescape_al is Some (c, _) then
+          c & html_unescape (sdrop n.+1 str1)
+        else if hex_entref entref is Some c then
+          c & html_unescape (sdrop n.+1 str1)
+        else if dec_entref entref is Some c then
+          c & html_unescape (sdrop n.+1 str1)
         else
           "&" & html_unescape str1
-      else if start_with "#" str1 is Some n1 then
-        let str2 := sdrop n1 str1 in
-        let: (m, n2) := decode_decimal_prefix str2 in
-        if 0 < n2 then
-          let str3 := sdrop n2 str2 in
-          if start_with ";" str3 is Some n3 then
-            str_of_asciicode m ++ html_unescape (sdrop n3 str3)
-          else
-            "&" & html_unescape str1
-        else
-          "&" & html_unescape str1
-      else "&" & html_unescape str1
-  | ch & str1 => str_of_char ch ++ html_unescape str1
+      else
+        "&" & html_unescape str1
+  | ch & str1 => ch & html_unescape str1
   end.
 
 Lemma html_unescape_escape str : html_unescape (html_escape str) = str.
 Proof.
   elim: str => [|c str IH /=]; first by [].
-  case: eqP => [-> /=|/eqP not_amp]; first by rewrite sdrop0 IH.
-  case: eqP => [-> /=|/eqP not_lt]; first by rewrite sdrop0 IH.
-  case: eqP => [-> /=|/eqP not_gt]; first by rewrite sdrop0 IH.
-  case: eqP => [-> /=|/eqP not_quot]; first by rewrite sdrop0 IH.
-  case: eqP => [-> /=|/eqP not_apos]; first by rewrite sdrop0 IH.
+  case: eqP => [<- /=|/eqP not_amp]; first by rewrite sdrop0 IH.
+  case: eqP => [<- /=|/eqP not_lt]; first by rewrite sdrop0 IH.
+  case: eqP => [<- /=|/eqP not_gt]; first by rewrite sdrop0 IH.
+  case: eqP => [<- /=|/eqP not_quot]; first by rewrite sdrop0 IH.
+  case: eqP => [<- /=|/eqP not_apos]; first by rewrite sdrop0 IH.
   rewrite [_ ++ _]/=.
   move: not_amp not_lt not_gt not_quot not_apos.
   case: c => b1 b2 b3 b4 b5 b6 b7 b8.

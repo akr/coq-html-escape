@@ -2,7 +2,8 @@ From mathcomp Require Import all_ssreflect.
 Require Import String.
 Require Import Ascii.
 
-Local Open Scope string_scope.
+Local Open Scope string_scope. (* enable "string" and str ++ str *)
+Local Open Scope seq_scope. (* prefer seq ++ seq over str ++ str *)
 
 Local Notation "c & str" := (String c str) (at level 60, right associativity).
 
@@ -78,21 +79,12 @@ Proof. by elim: str => [|c str /= ->]. Qed.
 Lemma seq_of_str_of_seq s : seq_of_str (str_of_seq s) = s.
 Proof. by elim: s => [|c s /= ->]. Qed.
 
-Fixpoint eqstr a b :=
-  match a, b with
-  | "", "" => true
-  | a0 & a', b0 & b' => (a0 == b0) && eqstr a' b'
-  | _, _ => false
-  end.
+Coercion seq_of_str : string >-> seq.
+
+Definition eqstr a b := seq_of_str a == seq_of_str b.
 
 Lemma eqstr_eq a b : (eqstr (str_of_seq a) (str_of_seq b)) = (a == b).
-Proof.
-  elim: b a; first by case.
-  move=> c s' IH [] /=.
-    by [].
-  move=> c' s.
-  by rewrite IH.
-Qed.
+Proof. by rewrite /eqstr 2!seq_of_str_of_seq. Qed.
 
 Lemma eqstrP : Equality.axiom eqstr.
 Proof.
@@ -110,8 +102,11 @@ Qed.
 Canonical string_eqMixin := EqMixin eqstrP.
 Canonical string_eqType := Eval hnf in EqType string string_eqMixin.
 
+Lemma cons_str_of_seq c s : c & str_of_seq s = str_of_seq (c :: s).
+Proof. by []. Qed.
+
 Lemma append_cat (s1 s2 : seq ascii) :
-  (str_of_seq s1) ++ (str_of_seq s2) = str_of_seq (s1 ++ s2).
+  append (str_of_seq s1) (str_of_seq s2) = str_of_seq (s1 ++ s2).
 Proof. by elim: s1 => [|c s /= ->]. Qed.
 
 Lemma length_size (s : seq ascii) : length (str_of_seq s) = size s.
@@ -127,8 +122,9 @@ Proof.
   by case: n => [|n]; rewrite IH.
 Qed.
 
-Definition stake n str := substring 0 n str.
+Definition stake n (str : string) := str_of_seq (take n str).
 
+(* usable for decreasing argument *)
 Fixpoint sdrop n str {struct str} :=
   match n with
   | 0 => str
@@ -149,6 +145,7 @@ Proof.
   by rewrite IH.
 Qed.
 
+(*
 Lemma sdrop_substring n str : sdrop n str = substring n (length str - n) str.
 Proof.
   rewrite -(str_of_seq_of_str str).
@@ -162,6 +159,7 @@ Proof.
     by [].
   by rewrite size_drop.
 Qed.
+*)
 
 Lemma sdrop0 str : sdrop 0 str = str.
 Proof.
@@ -171,20 +169,14 @@ Proof.
   by rewrite sdrop_drop drop0.
 Qed.
 
-Lemma stake_sdrop n str : stake n str ++ sdrop n str = str.
+Lemma stake_sdrop n str : append (stake n str) (sdrop n str) = str.
 Proof.
-  rewrite /stake sdrop_substring -(str_of_seq_of_str str).
+  rewrite -(str_of_seq_of_str str).
   move: (seq_of_str str) => s.
-  clear str.
-  rewrite 2!substring_take_drop append_cat.
-  congr (str_of_seq _).
-  rewrite drop0 length_size [take (size _ - _) _]take_oversize.
-    by rewrite cat_take_drop.
-  by rewrite size_drop.
+  by rewrite /stake sdrop_drop seq_of_str_of_seq append_cat cat_take_drop.
 Qed.
 
-Definition sindex c str :=
-  let s := seq_of_str str in
+Definition sindex c (s : seq ascii) :=
   let i := seq.index c s in
   if i < size s then
     Some i
@@ -223,6 +215,16 @@ Proof.
   by rewrite -IH.
 Qed.
 
+Fixpoint map_prefix {T1 T2 : Type} (f : T1 -> option T2) (s : seq T1) : seq T2 :=
+  match s with
+  | nil => nil
+  | e :: s' =>
+      if f e is Some v then
+        v :: map_prefix f s'
+      else
+        nil
+  end.
+
 Definition html_escape_al := [::
   ("&"%char, "amp");
   ("<"%char, "lt");
@@ -231,169 +233,328 @@ Definition html_escape_al := [::
   ("'"%char, "#39")
 ].
 
-Fixpoint html_escape str :=
-  match str with
-  | "" => ""
-  | c & str' =>
+Fixpoint html_escape s :=
+  match s with
+  | nil => nil
+  | c :: s' =>
       (if assoc c html_escape_al is Some (_, e) then
         "&" ++ e ++ ";"
       else
-        str_of_char c) ++
-      html_escape str'
+        [:: c]) ++
+      html_escape s'
   end.
 
 Goal html_escape "abc&def<>""'" = "abc&amp;def&lt;&gt;&quot;&#39;". by []. Qed.
 
-Fixpoint start_with prefix str :=
+Fixpoint start_with (prefix s : seq ascii) :=
   match prefix with
-  | "" => Some 0
-  | pch & prefix' =>
-      match str with
-      | "" => None
-      | sch & str' =>
+  | nil => Some 0
+  | pch :: prefix' =>
+      match s with
+      | nil => None
+      | sch :: s' =>
           if pch == sch then
-            if start_with prefix' str' is Some n then Some n.+1 else None
+            if start_with prefix' s' is Some n then Some n.+1 else None
           else None
       end
   end.
 
 (* case insensitive version of start_with *)
-Fixpoint start_with_ci prefix str :=
+Fixpoint ci_start_with (prefix s : seq ascii) :=
   match prefix with
-  | "" => Some 0
-  | pch & prefix' =>
-      match str with
-      | "" => None
-      | sch & str' =>
+  | nil => Some 0
+  | pch :: prefix' =>
+      match s with
+      | nil => None
+      | sch :: s' =>
           if downcase_ascii pch == downcase_ascii sch then
-            if start_with_ci prefix' str' is Some n then Some n.+1 else None
+            if ci_start_with prefix' s' is Some n then Some n.+1 else None
           else None
       end
   end.
 
+Definition digit_chars := [::
+  ("0"%char, 0);
+  ("1"%char, 1);
+  ("2"%char, 2);
+  ("3"%char, 3);
+  ("4"%char, 4);
+  ("5"%char, 5);
+  ("6"%char, 6);
+  ("7"%char, 7);
+  ("8"%char, 8);
+  ("9"%char, 9)
+].
+
 Definition nat_of_digit (ch : ascii) :=
-  match ch with
-  | "0"%char => Some 0
-  | "1"%char => Some 1
-  | "2"%char => Some 2
-  | "3"%char => Some 3
-  | "4"%char => Some 4
-  | "5"%char => Some 5
-  | "6"%char => Some 6
-  | "7"%char => Some 7
-  | "8"%char => Some 8
-  | "9"%char => Some 9
-  | _ => None
-  end.
+  if assoc ch digit_chars is Some (_, d) then Some d else None.
 
-Fixpoint decode_decimal_prefix str :=
-  match str with
-  | ch & str' => 
-      if nat_of_digit ch is Some d then
-        let (n, len) := decode_decimal_prefix str' in
-        (d * 10 ^ len + n, len.+1)
-      else
-        (0, 0)
-  | "" => (0, 0)
-  end.
+Definition isdigit ch :=
+  if assoc ch digit_chars is Some _ then true else false.
 
-Definition nat_of_hexdig (ch : ascii) :=
-  match ch with
-  | "0"%char => Some 0
-  | "1"%char => Some 1
-  | "2"%char => Some 2
-  | "3"%char => Some 3
-  | "4"%char => Some 4
-  | "5"%char => Some 5
-  | "6"%char => Some 6
-  | "7"%char => Some 7
-  | "8"%char => Some 8
-  | "9"%char => Some 9
-  | "a"%char => Some 10
-  | "b"%char => Some 11
-  | "c"%char => Some 12
-  | "d"%char => Some 13
-  | "e"%char => Some 14
-  | "f"%char => Some 15
-  | "A"%char => Some 10
-  | "B"%char => Some 11
-  | "C"%char => Some 12
-  | "D"%char => Some 13
-  | "E"%char => Some 14
-  | "F"%char => Some 15
-  | _ => None
-  end.
+(*
+Lemma isdigit_nat_of_digit_some c : isdigit c -> exists d, nat_of_digit c = Some d.
+Proof.
+  rewrite /isdigit.
+  case: (nat_of_digit c).
+    move=> n _.
+    by exists n.
+  by [].
+Qed.
 
-Fixpoint decode_hex_prefix str :=
-  match str with
-  | ch & str' => 
-      if nat_of_hexdig ch is Some d then
-        let (n, len) := decode_hex_prefix str' in
-        (d * 16 ^ len + n, len.+1)
-      else
-        (0, 0)
-  | "" => (0, 0)
-  end.
+Lemma nat_of_digit_some_isdigit c : (exists d, nat_of_digit c = Some d) -> isdigit c.
+Proof.
+  case => d.
+  by rewrite /isdigit => ->.
+Qed.
 
-Definition hex_entref str :=
-  if start_with_ci "#x" str is Some n1 then
-    let str2 := sdrop n1 str in
-    let: (m, n2) := decode_hex_prefix str2 in
-    if (0 < n2) && (n2 == length str2) then
-      Some (ascii_of_nat m)
-    else None
+Lemma isdigit_nat_of_digit_none c : ~~ isdigit c -> nat_of_digit c = None.
+Proof.
+  rewrite /isdigit.
+  by case: (nat_of_digit c).
+Qed.
+
+Require Import Sumbool.
+
+Lemma nat_of_digit_dec c :
+  { (exists d, nat_of_digit c = Some d) } + { nat_of_digit c = None }.
+Proof.
+  move Hb: (isdigit c) => b.
+  case: b Hb.
+    move=> Hb.
+    left.
+    by apply isdigit_nat_of_digit_some.
+  move/negbT => Hb.
+  right.
+  by apply isdigit_nat_of_digit_none.
+Qed.
+*)
+
+Definition decode_decimal_prefix s :=
+  let ds := map_prefix nat_of_digit s in
+  let v := foldl (fun u d => u * 10 + d) 0 ds in
+  (v, size ds).
+
+Definition decode_decimal s :=
+  let (v, n) := decode_decimal_prefix s in
+  if n == size s then
+    Some v
   else
     None.
 
-Definition dec_entref str :=
-  if start_with_ci "#" str is Some n1 then
-    let str2 := sdrop n1 str in
-    let: (m, n2) := decode_decimal_prefix str2 in
-    if (0 < n2) && (n2 == length str2) then
-      Some (ascii_of_nat m)
-    else None
+Definition dec_entref s :=
+  if start_with "#" s is Some n1 then
+    let s2 := drop n1 s in
+    if s2 is nil then
+      None
+    else
+      oapp (Some \o ascii_of_nat) None (decode_decimal s2)
   else
     None.
 
-Definition html_unescape_al := [::
+Lemma decode_decimal_prefix_all_digit s v n :
+  decode_decimal_prefix s = (v, n) -> all isdigit (take n s).
+Proof.
+  rewrite /decode_decimal_prefix => [] [] _.
+  elim: s n => [|c s IH n /=]; first by [].
+  case: n => [|n /=]; first by [].
+  rewrite {1}/nat_of_digit {1}/isdigit.
+  case: (assoc c digit_chars); last by [].
+  case=> _ d /= /eqP.
+  rewrite eqSS => /eqP.
+  by apply IH.
+Qed.
+
+Lemma decode_decimal_all_digit s m :
+  decode_decimal s = Some m -> all isdigit s.
+Proof.
+  rewrite /decode_decimal /decode_decimal_prefix.
+  case: eqP => [H _|]; last by [].
+  clear m.
+  elim: s H => [|c s IH /=]; first by [].
+  rewrite {1}/nat_of_digit {1}/isdigit.
+  case: (assoc c digit_chars); last by [].
+  move=> [] _ /= _ /eqP.
+  by rewrite eqSS => /eqP.
+Qed.
+
+Definition xdigit_chars := [::
+  ("0"%char, 0);
+  ("1"%char, 1);
+  ("2"%char, 2);
+  ("3"%char, 3);
+  ("4"%char, 4);
+  ("5"%char, 5);
+  ("6"%char, 6);
+  ("7"%char, 7);
+  ("8"%char, 8);
+  ("9"%char, 9);
+  ("a"%char, 10);
+  ("b"%char, 11);
+  ("c"%char, 12);
+  ("d"%char, 13);
+  ("e"%char, 14);
+  ("f"%char, 15);
+  ("A"%char, 10);
+  ("B"%char, 11);
+  ("C"%char, 12);
+  ("D"%char, 13);
+  ("E"%char, 14);
+  ("F"%char, 15)
+].
+
+Definition nat_of_xdigit (ch : ascii) :=
+  if assoc ch xdigit_chars is Some (_, d) then Some d else None.
+
+Definition isxdigit ch :=
+  if assoc ch xdigit_chars is Some _ then true else false.
+
+Definition decode_hex_prefix s :=
+  let ds := map_prefix nat_of_xdigit s in
+  let v := foldl (fun u d => u * 16 + d) 0 ds in
+  (v, size ds).
+
+Definition decode_hex s :=
+  let (v, n) := decode_hex_prefix s in
+  if n == size s then
+    Some v
+  else
+    None.
+
+Definition hex_entref s :=
+  if ci_start_with "#x" s is Some n1 then
+    let s2 := drop n1 s in
+    if s2 is nil then
+      None
+    else
+      oapp (Some \o ascii_of_nat) None (decode_hex s2)
+  else
+    None.
+
+Definition html_unescape_al := map (fun p => (p.1, seq_of_str p.2)) [::
   ("&"%char, "amp");
   ("<"%char, "lt");
   (">"%char, "gt");
-  (""""%char, "quot")
+  (""""%char, "quot");
+  ("'"%char, "apos")
 ].
 
-Fixpoint html_unescape str :=
-  match str with
-  | "" => ""
-  | "&" & str1 =>
-      if sindex ";"%char str1 is Some n then
-        let entref := stake n str1 in
-        if rassoc entref html_unescape_al is Some (c, _) then
-          c & html_unescape (sdrop n.+1 str1)
-        else if hex_entref entref is Some c then
-          c & html_unescape (sdrop n.+1 str1)
-        else if dec_entref entref is Some c then
-          c & html_unescape (sdrop n.+1 str1)
+Fixpoint html_unescape s :=
+  match s with
+  | nil => nil
+  | "&"%char :: s1 =>
+      if ci_start_with "#x" s1 is Some n1 then
+        let s2 := drop n1 s1 in
+        let (v, n2) := decode_hex_prefix s2 in
+        if n2 is 0 then "&"%char :: html_unescape s1 else
+        let s3 := drop n2 s2 in
+        if start_with ";" s3 is Some n3 then
+          (ascii_of_nat v) :: html_unescape (drop n3 s3)
         else
-          "&" & html_unescape str1
+          "&"%char :: html_unescape s1
+      else if start_with "#" s1 is Some n1 then
+        let s2 := drop n1 s1 in
+        let (v, n2) := decode_decimal_prefix s2 in
+        if n2 is 0 then "&"%char :: html_unescape s1 else
+        let s3 := drop n2 s2 in
+        if start_with ";" s3 is Some n3 then
+          (ascii_of_nat v) :: html_unescape (drop n3 s3)
+        else
+          "&"%char :: html_unescape s1
+      else if sindex ";"%char s1 is Some n1 then
+        let name := take n1 s1 in
+        let s2 := drop n1 s1 in
+        if start_with ";" s2 is Some n2 then
+          let s3 := drop n2 s2 in
+          if rassoc name html_unescape_al is Some (c, _) then
+            c :: html_unescape s3
+          else
+            "&"%char :: html_unescape s1
+        else
+          "&"%char :: html_unescape s1
       else
-        "&" & html_unescape str1
-  | ch & str1 => ch & html_unescape str1
+        "&"%char :: html_unescape s1
+  | c :: s1 => c :: html_unescape s1
   end.
 
-Lemma html_unescape_escape str : html_unescape (html_escape str) = str.
+Lemma html_unescape_escape (s : seq ascii) : html_unescape (html_escape s) = s.
 Proof.
-  elim: str => [|c str IH /=]; first by [].
-  case: eqP => [<- /=|/eqP not_amp]; first by rewrite sdrop0 IH.
-  case: eqP => [<- /=|/eqP not_lt]; first by rewrite sdrop0 IH.
-  case: eqP => [<- /=|/eqP not_gt]; first by rewrite sdrop0 IH.
-  case: eqP => [<- /=|/eqP not_quot]; first by rewrite sdrop0 IH.
-  case: eqP => [<- /=|/eqP not_apos]; first by rewrite sdrop0 IH.
+  elim: s => [|c str IH /=]; first by [].
+  case: eqP => [<- /=|/eqP not_amp]; first by rewrite drop0 IH.
+  case: eqP => [<- /=|/eqP not_lt]; first by rewrite drop0 IH.
+  case: eqP => [<- /=|/eqP not_gt]; first by rewrite drop0 IH.
+  case: eqP => [<- /=|/eqP not_quot]; first by rewrite drop0 IH.
+  case: eqP => [<- /=|/eqP not_apos]; first by rewrite drop0 IH.
   rewrite [_ ++ _]/=.
   move: not_amp not_lt not_gt not_quot not_apos.
   case: c => b1 b2 b3 b4 b5 b6 b7 b8.
   case: b1; case: b2; case: b3; case: b4;
   case: b5; case: b6; case: b7; case: b8; by rewrite /= IH.
+Qed.
+
+Inductive esc_spec : string -> string -> Prop :=
+  | esc_empty : esc_spec "" ""
+  | esc_normal : forall c raw escaped, c != "&"%char ->
+      esc_spec raw escaped -> esc_spec (c & raw) (c & escaped)
+  | esc_entity : forall c entity raw escaped, (c, entity) \in html_unescape_al ->
+      esc_spec raw escaped -> esc_spec (c & raw) ("&" ++ entity ++ ";" ++ escaped)
+  | esc_dec : forall m digs raw escaped, decode_decimal digs = Some m ->
+      esc_spec (ascii_of_nat m & raw) ("&#" ++ digs ++ ";" ++ escaped)
+  | esc_hex : forall x m xdigs raw escaped,
+      downcase_ascii x == "x"%char -> decode_hex xdigs = Some m ->
+      esc_spec (ascii_of_nat m & raw) ("&#" ++ x & xdigs ++ ";" ++ escaped).
+
+Lemma html_unescape_ok raw escaped : esc_spec raw escaped -> html_unescape escaped = raw.
+Proof.
+  elim/esc_spec_ind.
+          by [].
+        clear raw escaped => c raw escaped not_amp spec unesc.
+        case: c not_amp => b1 b2 b3 b4 b5 b6 b7 b8.
+        case: b1; case: b2; case: b3; case: b4;
+        case: b5; case: b6; case: b7; case: b8; by rewrite /= unesc.
+      clear raw escaped => c entity raw escaped al spec unesc.
+      move: al.
+      rewrite /html_unescape_al 5!in_cons in_nil.
+      do 5 (case/orP => [/eqP [] -> -> /=|]; first by rewrite sdrop0 unesc).
+      done.
+    clear raw escaped => m digs raw escaped dec.
+    rewrite -(str_of_seq_of_str digs).
+    rewrite -(str_of_seq_of_str raw).
+    rewrite -(str_of_seq_of_str escaped).
+    move: (seq_of_str digs) (seq_of_str raw) (seq_of_str escaped) => digs' raw' escaped'.
+    rewrite [append _ _]/=.
+    move Hrest: ("#" & _) => rest /=.
+    rewrite -{1}Hrest /sindex /=.
+    rewrite cons_str_of_seq.
+    rewrite append_cat.
+    rewrite seq_of_str_of_seq.
+    rewrite index_cat.
+simpl.
+    
+simpl.
+
+    rewrite -[";"]/(str_of_seq [:: ";"%char]).
+    rewrite -["&#"]/("&"%char & str_of_seq [:: "#"%char]).
+
+    rewrite 3!append_cat.
+    move H: (html_unescape _).
+
+simpl.
+    red.
+    lazy delta [html_unescape] iota.
+
+
+
+    cbv beta delta iota zeta.
+
+
+
+
+    simpl.
+      
+: raw escaped.
+    
+    by [].
 Qed.
 
 

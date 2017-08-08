@@ -2,7 +2,7 @@ From mathcomp Require Import all_ssreflect.
 Require Import String.
 Require Import Ascii.
 
-Local Open Scope string_scope. (* enable "string" and str ++ str *)
+Local Open Scope string_scope. (* enable "string-literal" and str ++ str *)
 Local Open Scope seq_scope. (* prefer seq ++ seq over str ++ str *)
 
 Local Notation "c & str" := (String c str) (at level 60, right associativity).
@@ -187,6 +187,14 @@ Definition str_of_char c := String c EmptyString.
 
 Definition str_of_asciicode n := str_of_char (ascii_of_nat n).
 
+Lemma isSome_exists {T : Type} (x : option T) : isSome x -> exists v, x = Some v.
+Proof.
+  case: x.
+    move=> v' _.
+    by exists v'.
+  by [].
+Qed.
+
 Definition assoc_if {A B : Type} (p : A -> bool) (al : seq (A * B)) : option (A * B) :=
   List.find (p \o fst) al.
 
@@ -224,6 +232,27 @@ Fixpoint map_prefix {T1 T2 : Type} (f : T1 -> option T2) (s : seq T1) : seq T2 :
       else
         nil
   end.
+
+Lemma map_prefix_cat {T1 T2 : Type} (f : T1 -> option T2) e s1 s2 :
+  f e = None -> map_prefix f (s1 ++ e :: s2) = map_prefix f s1.
+Proof.
+  move=> H.
+  elim: s1.
+    simpl.
+    by rewrite H.
+  move=> a s IH /=.
+  by rewrite IH.
+Qed.
+
+Lemma size_map_prefix_full {T1 T2 : Type} (f : T1 -> option T2) s :
+  (size (map_prefix f s) == size s) = (all (isSome \o f) s).
+Proof.
+  elim: s.
+    by [].
+  move=> e s IH /=.
+  case: (f e) => [_ /=|]; last by [].
+  by rewrite eqSS.
+Qed.
 
 Definition html_escape_al := [::
   ("&"%char, "amp");
@@ -289,8 +318,21 @@ Definition digit_chars := [::
 Definition nat_of_digit (ch : ascii) :=
   if assoc ch digit_chars is Some (_, d) then Some d else None.
 
-Definition isdigit ch :=
-  if assoc ch digit_chars is Some _ then true else false.
+Definition isdigit ch := isSome (assoc ch digit_chars).
+
+Lemma isdigit_natofdigit_some c : isdigit c = isSome (nat_of_digit c).
+Proof.
+  rewrite /isdigit /nat_of_digit.
+  by case: (assoc c digit_chars) => [[]|].
+Qed.
+
+Lemma nat_of_digit_isdigit c : (nat_of_digit c != None) = isdigit c.
+Proof.
+  rewrite /nat_of_digit /isdigit.
+  case: (assoc c digit_chars).
+    by case.
+  by [].
+Qed.
 
 (*
 Lemma isdigit_nat_of_digit_some c : isdigit c -> exists d, nat_of_digit c = Some d.
@@ -341,6 +383,21 @@ Definition decode_decimal s :=
     Some v
   else
     None.
+
+Lemma decode_dec_eqsize digs : isSome (decode_decimal digs) =
+  (size (map_prefix nat_of_digit digs) == size digs).
+Proof.
+  rewrite /decode_decimal /decode_decimal_prefix /=.
+  by case: ifP.
+Qed.
+
+Lemma decode_dec_all_isdigit digs : isSome (decode_decimal digs) = all isdigit digs.
+Proof.
+  rewrite decode_dec_eqsize size_map_prefix_full.
+  elim: digs; first by [].
+  move=> c s IH /=.
+  by rewrite isdigit_natofdigit_some IH.
+Qed.
 
 Definition dec_entref s :=
   if start_with "#" s is Some n1 then
@@ -403,11 +460,38 @@ Definition xdigit_chars := [::
   ("F"%char, 15)
 ].
 
+Lemma xdigit_max c p : assoc c xdigit_chars = Some p -> p.2 < 16.
+Proof.
+  simpl.
+  do 22 (case: eqP => [_ [] <-|_]; first by []).
+  by [].
+Qed.
+
 Definition nat_of_xdigit (ch : ascii) :=
   if assoc ch xdigit_chars is Some (_, d) then Some d else None.
 
 Definition isxdigit ch :=
   if assoc ch xdigit_chars is Some _ then true else false.
+
+Lemma isxdigit_natofxdigit_some c : isxdigit c = isSome (nat_of_xdigit c).
+Proof.
+  rewrite /isxdigit /nat_of_xdigit.
+  by case: (assoc c xdigit_chars) => [[]|].
+Qed.
+
+(*
+Lemma isxdigit_natof c : isxdigit c -> exists d, d < 16 /\ nat_of_xdigit c = Some d.
+Proof.
+  rewrite /isxdigit /nat_of_xdigit.
+  case Ha: (assoc c xdigit_chars) => [p|]; last by [].
+  move=> _.
+  exists p.2.
+  split.
+    by apply (xdigit_max c).
+  clear Ha.
+  by case: p.
+Qed.
+*)
 
 Definition decode_hex_prefix s :=
   let ds := map_prefix nat_of_xdigit s in
@@ -420,6 +504,21 @@ Definition decode_hex s :=
     Some v
   else
     None.
+
+Lemma decode_hex_eqsize xdigs : isSome (decode_hex xdigs) =
+  (size (map_prefix nat_of_xdigit xdigs) == size xdigs).
+Proof.
+  rewrite /decode_hex /decode_hex_prefix /=.
+  by case: ifP.
+Qed.
+
+Lemma decode_hex_all_isxdigit xdigs : isSome (decode_hex xdigs) = all isxdigit xdigs.
+Proof.
+  rewrite decode_hex_eqsize size_map_prefix_full.
+  elim: xdigs; first by [].
+  move=> c s IH /=.
+  by rewrite isxdigit_natofxdigit_some IH.
+Qed.
 
 Definition hex_entref s :=
   if ci_start_with "#x" s is Some n1 then
@@ -446,7 +545,7 @@ Fixpoint html_unescape s :=
       if ci_start_with "#x" s1 is Some n1 then
         let s2 := drop n1 s1 in
         let (v, n2) := decode_hex_prefix s2 in
-        if n2 is 0 then "&"%char :: html_unescape s1 else
+        if n2 == 0 then "&"%char :: html_unescape s1 else
         let s3 := drop n2 s2 in
         if start_with ";" s3 is Some n3 then
           (ascii_of_nat v) :: html_unescape (drop n3 s3)
@@ -455,7 +554,7 @@ Fixpoint html_unescape s :=
       else if start_with "#" s1 is Some n1 then
         let s2 := drop n1 s1 in
         let (v, n2) := decode_decimal_prefix s2 in
-        if n2 is 0 then "&"%char :: html_unescape s1 else
+        if n2 == 0 then "&"%char :: html_unescape s1 else
         let s3 := drop n2 s2 in
         if start_with ";" s3 is Some n3 then
           (ascii_of_nat v) :: html_unescape (drop n3 s3)
@@ -492,19 +591,40 @@ Proof.
   case: b5; case: b6; case: b7; case: b8; by rewrite /= IH.
 Qed.
 
-Inductive esc_spec : string -> string -> Prop :=
-  | esc_empty : esc_spec "" ""
-  | esc_normal : forall c raw escaped, c != "&"%char ->
-      esc_spec raw escaped -> esc_spec (c & raw) (c & escaped)
-  | esc_entity : forall c entity raw escaped, (c, entity) \in html_unescape_al ->
-      esc_spec raw escaped -> esc_spec (c & raw) ("&" ++ entity ++ ";" ++ escaped)
-  | esc_dec : forall m digs raw escaped, decode_decimal digs = Some m ->
-      esc_spec (ascii_of_nat m & raw) ("&#" ++ digs ++ ";" ++ escaped)
-  | esc_hex : forall x m xdigs raw escaped,
-      downcase_ascii x == "x"%char -> decode_hex xdigs = Some m ->
-      esc_spec (ascii_of_nat m & raw) ("&#" ++ x & xdigs ++ ";" ++ escaped).
+Lemma size_map_prefix_xdigs xdigs :
+  all isxdigit xdigs -> size (map_prefix nat_of_xdigit xdigs) = size xdigs.
+Proof.
+  elim: xdigs; first by [].
+  move=> c s IH /= /andP [].
+  rewrite isxdigit_natofxdigit_some => /isSome_exists [] d -> /= H.
+  by rewrite IH.
+Qed.
 
-Lemma html_unescape_ok raw escaped : esc_spec raw escaped -> html_unescape escaped = raw.
+Lemma size_map_prefix_digs digs :
+  all isdigit digs -> size (map_prefix nat_of_digit digs) = size digs.
+Proof.
+  elim: digs; first by [].
+  move=> c s IH /= /andP [].
+  rewrite isdigit_natofdigit_some=> /isSome_exists [] d -> /= H.
+  by rewrite IH.
+Qed.
+
+Inductive esc_spec : seq ascii -> seq ascii -> Prop :=
+  | esc_empty : esc_spec nil nil
+  | esc_normal : forall c raw escaped, c != "&"%char ->
+      esc_spec raw escaped -> esc_spec (c :: raw) (c :: escaped)
+  | esc_entity : forall c entity raw escaped, (c, entity) \in html_unescape_al ->
+      esc_spec raw escaped -> esc_spec (c :: raw) ("&" ++ entity ++ ";" ++ escaped)
+  | esc_hex : forall x m xdigs raw escaped,
+      downcase_ascii x == "x"%char -> xdigs != nil -> decode_hex xdigs = Some m ->
+      esc_spec raw escaped ->
+      esc_spec (ascii_of_nat m :: raw) ("&#" ++ x :: xdigs ++ ";" ++ escaped)
+  | esc_dec : forall m digs raw escaped, digs != nil -> decode_decimal digs = Some m ->
+      esc_spec raw escaped ->
+      esc_spec (ascii_of_nat m :: raw) ("&#" ++ digs ++ ";" ++ escaped).
+
+Lemma html_unescape_ok raw escaped :
+  esc_spec raw escaped -> html_unescape escaped = raw.
 Proof.
   elim/esc_spec_ind.
           by [].
@@ -515,47 +635,42 @@ Proof.
       clear raw escaped => c entity raw escaped al spec unesc.
       move: al.
       rewrite /html_unescape_al 5!in_cons in_nil.
-      do 5 (case/orP => [/eqP [] -> -> /=|]; first by rewrite sdrop0 unesc).
-      done.
-    clear raw escaped => m digs raw escaped dec.
-    rewrite -(str_of_seq_of_str digs).
-    rewrite -(str_of_seq_of_str raw).
-    rewrite -(str_of_seq_of_str escaped).
-    move: (seq_of_str digs) (seq_of_str raw) (seq_of_str escaped) => digs' raw' escaped'.
-    rewrite [append _ _]/=.
-    move Hrest: ("#" & _) => rest /=.
-    rewrite -{1}Hrest /sindex /=.
-    rewrite cons_str_of_seq.
-    rewrite append_cat.
-    rewrite seq_of_str_of_seq.
-    rewrite index_cat.
-simpl.
-    
-simpl.
-
-    rewrite -[";"]/(str_of_seq [:: ";"%char]).
-    rewrite -["&#"]/("&"%char & str_of_seq [:: "#"%char]).
-
-    rewrite 3!append_cat.
-    move H: (html_unescape _).
-
-simpl.
-    red.
-    lazy delta [html_unescape] iota.
-
-
-
-    cbv beta delta iota zeta.
-
-
-
-
-    simpl.
-      
-: raw escaped.
-    
+      do 5 (case/orP => [/eqP [] -> -> /=|]; first by rewrite drop0 unesc).
+      by [].
+    clear raw escaped.
+    move=> x m xdigs raw escaped /eqP Hx Hnonnil Hxdigs IH.
+    move Hrest: (x :: xdigs ++ ";" ++ escaped) => rest /=.
+    rewrite -Hx -{}Hrest eq_refl [drop 1 _]drop0 map_prefix_cat; last by [].
+    rewrite size_map_prefix_xdigs; last first.
+      by rewrite -decode_hex_all_isxdigit Hxdigs.
+    rewrite size_eq0 -[xdigs == [::]]negbK Hnonnil /= drop_size_cat; last by [].
+    rewrite eq_refl /= drop0 => ->.
+    congr (ascii_of_nat _ :: raw).
+    have Hsz: size (map_prefix nat_of_xdigit xdigs) == size xdigs.
+      by rewrite -decode_hex_eqsize Hxdigs.
+    move: Hxdigs.
+    by rewrite /decode_hex /decode_hex_prefix Hsz => [] [].
+  clear raw escaped.
+  move=> m digs raw escaped Hnonnil Hdigs IH.
+  simpl.
+  rewrite (_ : match digs ++ _ with | [::] => None | sch :: _ => _ end = None); last first.
+    have: all isdigit digs.
+      by rewrite -decode_dec_all_isdigit Hdigs.
+    case digs.
+      by [].
+    move=> c s' /= /andP [] Hisdigit _.
+    move: Hisdigit.
+    rewrite /isdigit /assoc /assoc_if /digit_chars /=.
+    do 10 (case: eqP => [<- _ /=|_]; first by []).
     by [].
+  rewrite drop0 map_prefix_cat; last by [].
+  rewrite size_map_prefix_digs; last first.
+    by rewrite -decode_dec_all_isdigit Hdigs.
+  rewrite size_eq0 -[digs == [::]]negbK Hnonnil /= drop_size_cat; last by [].
+  rewrite eq_refl /= drop0 => ->.
+  congr (ascii_of_nat _ :: raw).
+  have Hsz: size (map_prefix nat_of_digit digs) == size digs.
+    by rewrite -decode_dec_eqsize Hdigs.
+  move: Hdigs.
+  by rewrite /decode_decimal /decode_decimal_prefix Hsz => [] [].
 Qed.
-
-
-

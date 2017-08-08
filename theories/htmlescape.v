@@ -5,7 +5,6 @@ Require Import Ascii.
 Local Open Scope string_scope. (* enable "string-literal" and str ++ str *)
 Local Open Scope seq_scope. (* prefer seq ++ seq over str ++ str *)
 
-
 Definition eqascii a b :=
   let: Ascii a1 a2 a3 a4 a5 a6 a7 a8 := a in
   let: Ascii b1 b2 b3 b4 b5 b6 b7 b8 := b in
@@ -100,80 +99,6 @@ Qed.
 
 Canonical string_eqMixin := EqMixin eqstrP.
 Canonical string_eqType := Eval hnf in EqType string string_eqMixin.
-
-Lemma cons_str_of_seq c s : String c (str_of_seq s) = str_of_seq (c :: s).
-Proof. by []. Qed.
-
-Lemma append_cat (s1 s2 : seq ascii) :
-  append (str_of_seq s1) (str_of_seq s2) = str_of_seq (s1 ++ s2).
-Proof. by elim: s1 => [|c s /= ->]. Qed.
-
-Lemma length_size (s : seq ascii) : length (str_of_seq s) = size s.
-Proof. by elim: s => [|c s /= ->]. Qed.
-
-Lemma substring_take_drop m n s :
-  substring m n (str_of_seq s) = str_of_seq (take n (drop m s)).
-Proof.
-  elim: s m n => [m n|c s IH m n /=].
-    by case: m; case: n.
-  case: m => [|m].
-    by case: n => [|n]; last rewrite IH drop0.
-  by case: n => [|n]; rewrite IH.
-Qed.
-
-Definition stake n (str : string) := str_of_seq (take n str).
-
-(* usable for decreasing argument *)
-Fixpoint sdrop n str {struct str} :=
-  match n with
-  | 0 => str
-  | n'.+1 =>
-      match str with
-      | "" => str
-      | String ch str' => sdrop n' str'
-      end
-  end.
-
-Lemma sdrop_drop n s : sdrop n (str_of_seq s) = str_of_seq (drop n s).
-Proof.
-  elim: s n.
-    by move=> [|n].
-  move=> c s IH n.
-  case: n; first by [].
-  move=> n /=.
-  by rewrite IH.
-Qed.
-
-(*
-Lemma sdrop_substring n str : sdrop n str = substring n (length str - n) str.
-Proof.
-  rewrite -(str_of_seq_of_str str).
-  move: (seq_of_str str) => s.
-  clear str.
-  rewrite sdrop_drop.
-  rewrite substring_take_drop.
-  congr (str_of_seq _).
-  rewrite length_size.
-  rewrite [take (size _ - _) _]take_oversize.
-    by [].
-  by rewrite size_drop.
-Qed.
-*)
-
-Lemma sdrop0 str : sdrop 0 str = str.
-Proof.
-  rewrite -(str_of_seq_of_str str).
-  move: (seq_of_str str) => s.
-  clear str.
-  by rewrite sdrop_drop drop0.
-Qed.
-
-Lemma stake_sdrop n str : append (stake n str) (sdrop n str) = str.
-Proof.
-  rewrite -(str_of_seq_of_str str).
-  move: (seq_of_str str) => s.
-  by rewrite /stake sdrop_drop seq_of_str_of_seq append_cat cat_take_drop.
-Qed.
 
 Definition sindex c (s : seq ascii) :=
   let i := seq.index c s in
@@ -319,57 +244,11 @@ Definition nat_of_digit (ch : ascii) :=
 
 Definition isdigit ch := isSome (assoc ch digit_chars).
 
-Lemma isdigit_natofdigit_some c : isdigit c = isSome (nat_of_digit c).
+Lemma isdigit_natof c : isdigit c = isSome (nat_of_digit c).
 Proof.
   rewrite /isdigit /nat_of_digit.
   by case: (assoc c digit_chars) => [[]|].
 Qed.
-
-Lemma nat_of_digit_isdigit c : (nat_of_digit c != None) = isdigit c.
-Proof.
-  rewrite /nat_of_digit /isdigit.
-  case: (assoc c digit_chars).
-    by case.
-  by [].
-Qed.
-
-(*
-Lemma isdigit_nat_of_digit_some c : isdigit c -> exists d, nat_of_digit c = Some d.
-Proof.
-  rewrite /isdigit.
-  case: (nat_of_digit c).
-    move=> n _.
-    by exists n.
-  by [].
-Qed.
-
-Lemma nat_of_digit_some_isdigit c : (exists d, nat_of_digit c = Some d) -> isdigit c.
-Proof.
-  case => d.
-  by rewrite /isdigit => ->.
-Qed.
-
-Lemma isdigit_nat_of_digit_none c : ~~ isdigit c -> nat_of_digit c = None.
-Proof.
-  rewrite /isdigit.
-  by case: (nat_of_digit c).
-Qed.
-
-Require Import Sumbool.
-
-Lemma nat_of_digit_dec c :
-  { (exists d, nat_of_digit c = Some d) } + { nat_of_digit c = None }.
-Proof.
-  move Hb: (isdigit c) => b.
-  case: b Hb.
-    move=> Hb.
-    left.
-    by apply isdigit_nat_of_digit_some.
-  move/negbT => Hb.
-  right.
-  by apply isdigit_nat_of_digit_none.
-Qed.
-*)
 
 Definition decode_decimal_prefix s :=
   let ds := map_prefix nat_of_digit s in
@@ -395,43 +274,7 @@ Proof.
   rewrite decode_dec_eqsize size_map_prefix_full.
   elim: digs; first by [].
   move=> c s IH /=.
-  by rewrite isdigit_natofdigit_some IH.
-Qed.
-
-Definition dec_entref s :=
-  if start_with "#" s is Some n1 then
-    let s2 := drop n1 s in
-    if s2 is nil then
-      None
-    else
-      oapp (Some \o ascii_of_nat) None (decode_decimal s2)
-  else
-    None.
-
-Lemma decode_decimal_prefix_all_digit s v n :
-  decode_decimal_prefix s = (v, n) -> all isdigit (take n s).
-Proof.
-  rewrite /decode_decimal_prefix => [] [] _.
-  elim: s n => [|c s IH n /=]; first by [].
-  case: n => [|n /=]; first by [].
-  rewrite {1}/nat_of_digit {1}/isdigit.
-  case: (assoc c digit_chars); last by [].
-  case=> _ d /= /eqP.
-  rewrite eqSS => /eqP.
-  by apply IH.
-Qed.
-
-Lemma decode_decimal_all_digit s m :
-  decode_decimal s = Some m -> all isdigit s.
-Proof.
-  rewrite /decode_decimal /decode_decimal_prefix.
-  case: eqP => [H _|]; last by [].
-  clear m.
-  elim: s H => [|c s IH /=]; first by [].
-  rewrite {1}/nat_of_digit {1}/isdigit.
-  case: (assoc c digit_chars); last by [].
-  move=> [] _ /= _ /eqP.
-  by rewrite eqSS => /eqP.
+  by rewrite isdigit_natof IH.
 Qed.
 
 Definition xdigit_chars := [::
@@ -459,38 +302,17 @@ Definition xdigit_chars := [::
   ("F"%char, 15)
 ].
 
-Lemma xdigit_max c p : assoc c xdigit_chars = Some p -> p.2 < 16.
-Proof.
-  simpl.
-  do 22 (case: eqP => [_ [] <-|_]; first by []).
-  by [].
-Qed.
-
 Definition nat_of_xdigit (ch : ascii) :=
   if assoc ch xdigit_chars is Some (_, d) then Some d else None.
 
 Definition isxdigit ch :=
   if assoc ch xdigit_chars is Some _ then true else false.
 
-Lemma isxdigit_natofxdigit_some c : isxdigit c = isSome (nat_of_xdigit c).
+Lemma isxdigit_natof c : isxdigit c = isSome (nat_of_xdigit c).
 Proof.
   rewrite /isxdigit /nat_of_xdigit.
   by case: (assoc c xdigit_chars) => [[]|].
 Qed.
-
-(*
-Lemma isxdigit_natof c : isxdigit c -> exists d, d < 16 /\ nat_of_xdigit c = Some d.
-Proof.
-  rewrite /isxdigit /nat_of_xdigit.
-  case Ha: (assoc c xdigit_chars) => [p|]; last by [].
-  move=> _.
-  exists p.2.
-  split.
-    by apply (xdigit_max c).
-  clear Ha.
-  by case: p.
-Qed.
-*)
 
 Definition decode_hex_prefix s :=
   let ds := map_prefix nat_of_xdigit s in
@@ -516,18 +338,8 @@ Proof.
   rewrite decode_hex_eqsize size_map_prefix_full.
   elim: xdigs; first by [].
   move=> c s IH /=.
-  by rewrite isxdigit_natofxdigit_some IH.
+  by rewrite isxdigit_natof IH.
 Qed.
-
-Definition hex_entref s :=
-  if ci_start_with "#x" s is Some n1 then
-    let s2 := drop n1 s in
-    if s2 is nil then
-      None
-    else
-      oapp (Some \o ascii_of_nat) None (decode_hex s2)
-  else
-    None.
 
 Definition html_unescape_al := map (fun p => (p.1, seq_of_str p.2)) [::
   ("&"%char, "amp");
@@ -595,7 +407,7 @@ Lemma size_map_prefix_xdigs xdigs :
 Proof.
   elim: xdigs; first by [].
   move=> c s IH /= /andP [].
-  rewrite isxdigit_natofxdigit_some => /isSome_exists [] d -> /= H.
+  rewrite isxdigit_natof => /isSome_exists [] d -> /= H.
   by rewrite IH.
 Qed.
 
@@ -604,7 +416,7 @@ Lemma size_map_prefix_digs digs :
 Proof.
   elim: digs; first by [].
   move=> c s IH /= /andP [].
-  rewrite isdigit_natofdigit_some=> /isSome_exists [] d -> /= H.
+  rewrite isdigit_natof=> /isSome_exists [] d -> /= H.
   by rewrite IH.
 Qed.
 

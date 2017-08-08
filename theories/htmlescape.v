@@ -5,7 +5,6 @@ Require Import Ascii.
 Local Open Scope string_scope. (* enable "string-literal" and str ++ str *)
 Local Open Scope seq_scope. (* prefer seq ++ seq over str ++ str *)
 
-Local Notation "c & str" := (String c str) (at level 60, right associativity).
 
 Definition eqascii a b :=
   let: Ascii a1 a2 a3 a4 a5 a6 a7 a8 := a in
@@ -64,13 +63,13 @@ Definition downcase_ascii (ch : ascii) :=
 Fixpoint seq_of_str str :=
   match str with
   | "" => nil
-  | c & str' => c :: (seq_of_str str')
+  | String c str' => c :: (seq_of_str str')
   end.
 
 Fixpoint str_of_seq s :=
   match s with
   | nil => ""
-  | c :: s' => c & (str_of_seq s')
+  | c :: s' => String c (str_of_seq s')
   end.
 
 Lemma str_of_seq_of_str str : str_of_seq (seq_of_str str) = str.
@@ -102,7 +101,7 @@ Qed.
 Canonical string_eqMixin := EqMixin eqstrP.
 Canonical string_eqType := Eval hnf in EqType string string_eqMixin.
 
-Lemma cons_str_of_seq c s : c & str_of_seq s = str_of_seq (c :: s).
+Lemma cons_str_of_seq c s : String c (str_of_seq s) = str_of_seq (c :: s).
 Proof. by []. Qed.
 
 Lemma append_cat (s1 s2 : seq ascii) :
@@ -131,7 +130,7 @@ Fixpoint sdrop n str {struct str} :=
   | n'.+1 =>
       match str with
       | "" => str
-      | ch & str' => sdrop n' str'
+      | String ch str' => sdrop n' str'
       end
   end.
 

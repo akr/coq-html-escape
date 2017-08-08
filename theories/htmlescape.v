@@ -674,3 +674,36 @@ Proof.
   move: Hdigs.
   by rewrite /decode_decimal /decode_decimal_prefix Hsz => [] [].
 Qed.
+
+Lemma html_escape_ok raw escaped :
+  html_escape raw = escaped -> esc_spec raw escaped.
+Proof.
+  elim: raw escaped.
+    move=> escaped /= <-.
+    constructor.
+  move=> c s IH escaped /=.
+  have Hcat str : (("&"%char :: str ++ [:: ";"%char]) ++ html_escape s) =
+                   ("&" ++ str ++ [:: ";"%char] ++ html_escape s).
+    by rewrite 2!catA.
+  case: eqP => [<- <-|/eqP not_amp].
+    by rewrite Hcat; apply esc_entity; last apply IH.
+  case: eqP => [<- <-|not_lt].
+    by rewrite Hcat; apply esc_entity; last apply IH.
+  case: eqP => [<- <-|not_gt].
+    by rewrite Hcat; apply esc_entity; last apply IH.
+  case: eqP => [<- <-|not_quot].
+    by rewrite Hcat; apply esc_entity; last apply IH.
+  case: eqP => [<- <-|not_apos].
+    rewrite (_ : "'"%char = ascii_of_nat 39); last by [].
+    rewrite (_ : (("&"%char :: "#39" ++ [:: ";"%char]) ++ html_escape s) =
+      ("&#" ++ "39" ++ ";" ++ html_escape s)); last by [].
+    apply esc_dec.
+        by [].
+      by [].
+    by apply IH.
+  move=> /= <-.
+  apply esc_normal.
+    by rewrite eq_sym.
+  by apply IH.
+Qed.
+

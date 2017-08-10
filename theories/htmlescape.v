@@ -439,10 +439,21 @@ Lemma html_unescape_ok raw escaped :
 Proof.
   elim/esc_spec_ind.
           by [].
-        clear raw escaped => c raw escaped not_amp spec unesc.
-        case: c not_amp => b1 b2 b3 b4 b5 b6 b7 b8.
-        case: b1; case: b2; case: b3; case: b4;
-        case: b5; case: b6; case: b7; case: b8; by rewrite /= unesc.
+        clear raw escaped => c raw escaped.
+        rewrite {1}/eq_op [Equality.op _ _ _]/= /eqascii.
+        case: c => b1 b2 b3 b4 b5 b6 b7 b8.
+        rewrite 7!negb_and 3!eqb_id 5!eqbF_neg 5!negbK.
+        move=> Hbs _ /= ->.
+        move: Hbs.
+        case: b1 => [|/=]; first by [].
+        case: b2 => [/=|]; last by [].
+        case: b3 => [/=|]; last by [].
+        case: b4 => [|/=]; first by [].
+        case: b5 => [|/=]; first by [].
+        case: b6 => [/=|]; last by [].
+        case: b7 => [|/=]; first by [].
+        case: b8 => [|/=]; first by [].
+        by [].
       clear raw escaped => c entity raw escaped al spec unesc.
       move: al.
       rewrite /html_unescape_al 5!in_cons in_nil.

@@ -131,6 +131,12 @@ Definition assoc {A : eqType} {B : Type} (a : A) (al : seq (A * B)) : option (A 
 Definition rassoc {A : Type} {B : eqType} (b : B) (al : seq (A * B)) : option (A * B) :=
   rassoc_if (pred1 b) al.
 
+Definition assoc_default {A : eqType} {B : Type} (d : B) (a : A) (al : seq (A * B)) :=
+  if assoc a al is Some (k,v) then v else d.
+
+Definition rassoc_default {A : Type} {B : eqType} (d : A) (b : B) (al : seq (A * B)) :=
+  if rassoc b al is Some (k,v) then k else d.
+
 Lemma associf_filter A B (p : A -> bool) (al : seq (A * B)) :
   assoc_if p al = if filter (p \o fst) al is x :: _ then Some x else None.
 Proof.
@@ -528,4 +534,110 @@ Proof.
     by rewrite eq_sym.
   by apply IH.
 Qed.
+
+Fixpoint trec_html_escape_iter buf s :=
+  match s with
+  | nil => buf
+  | c :: s' =>
+      trec_html_escape_iter
+        (buf ++
+          (if assoc c html_escape_al is Some (_, e) then
+            "&" ++ e ++ ";"
+          else
+            [:: c]))
+        s'
+  end.
+
+Definition trec_html_escape s := trec_html_escape_iter nil s.
+
+Lemma trec_html_escape_ok s : trec_html_escape s = html_escape s.
+Proof.
+  simpl in s.
+  rewrite /trec_html_escape.
+  rewrite -[html_escape s]cat0s.
+  move: [::] => buf.
+  elim: s buf.
+    move=> buf /=.
+    by rewrite cats0.
+  move=> c s IH buf /=.
+  by rewrite IH catA.
+Qed.
+
+Inductive m128 := c128 :
+  ascii -> ascii -> ascii -> ascii ->
+  ascii -> ascii -> ascii -> ascii ->
+  ascii -> ascii -> ascii -> ascii ->
+  ascii -> ascii -> ascii -> ascii -> m128.
+
+Definition seq_of_m128 m :=
+  let: c128 b0 b1 b2 b3 b4 b5 b6 b7 b8 b9 ba bb bc bd be bf := m in
+  [:: b0; b1; b2; b3; b4; b5; b6; b7; b8; b9; ba; bb; bc; bd; be; bf].
+
+Definition m128_of_seq s := c128
+  (nth "000"%char s 0) (nth "000"%char s 1) (nth "000"%char s 2) (nth "000"%char s 3)
+  (nth "000"%char s 4) (nth "000"%char s 5) (nth "000"%char s 6) (nth "000"%char s 7)
+  (nth "000"%char s 8) (nth "000"%char s 9) (nth "000"%char s 10) (nth "000"%char s 11)
+  (nth "000"%char s 12) (nth "000"%char s 13) (nth "000"%char s 14) (nth "000"%char s 15).
+
+Lemma m128_of_seq_of_m128 m : m128_of_seq (seq_of_m128 m) = m.
+Proof.
+  by case: m.
+Qed.
+
+Lemma seq_of_m128_of_seq s :
+  take (size s) (seq_of_m128 (m128_of_seq s)) = take (minn (size s) 16) s.
+Proof.
+  case: s => [|b0 s]; first by [].
+  case: s => [|b1 s]; first by [].
+  case: s => [|b2 s]; first by [].
+  case: s => [|b3 s]; first by [].
+  case: s => [|b4 s]; first by [].
+  case: s => [|b5 s]; first by [].
+  case: s => [|b6 s]; first by [].
+  case: s => [|b7 s]; first by [].
+  case: s => [|b8 s]; first by [].
+  case: s => [|b9 s]; first by [].
+  case: s => [|ba s]; first by [].
+  case: s => [|bb s]; first by [].
+  case: s => [|bc s]; first by [].
+  case: s => [|bd s]; first by [].
+  case: s => [|be s]; first by [].
+  case: s => [|bf s]; first by [].
+  by rewrite /= take0.
+Qed.
+
+(* _mm_cmpestri(a, la, b, lb,
+     _SIDD_UBYTE_OPS|_SIDD_CMP_EQUAL_ANY|
+     _SIDD_POSITIVE_POLARITY|_SIDD_LEAST_SIGNIFICANT) *)
+Definition cmpestri_ubyte_eqany_ppol_lsig (a : m128) (la : nat) (b : m128) (lb : nat) :=
+  let sa := take la (seq_of_m128 a) in
+  let sb := take lb (seq_of_m128 b) in
+  let p x := x \in sa in
+  let i := find p sb in
+  if i == size sb then 16 else i.
+
+Definition need_to_escape := m128_of_seq [:: "&"%char; "<"%char; ">"%char; """"%char; "'"%char].
+
+Fixpoint sse_html_escape_iter buf s n :=
+  match n with
+  | 0 => buf
+  | n'.+1 =>
+      if n < 16 then
+        trec_html_escape_iter buf s
+      else
+        let i := cmpestri_ubyte_eqany_ppol_lsig
+            need_to_escape 5 (m128_of_seq s) 16 in
+        if i == 16 then
+          sse_html_escape_iter (buf ++ take 16 s) (drop 16 s) (n' - 15)
+        else
+          let buf2 := buf ++ take i s in
+          let rest := drop i s in
+          let c := head "000"%char rest in
+          let rest2 := behead rest in
+          let escaped := seq_of_str (assoc_default (String c EmptyString) c html_escape_al) in
+          let buf3 := buf2 ++ escaped in
+          sse_html_escape_iter buf3 rest2 (n' - i)
+  end.
+
+Definition sse_html_escape buf s := sse_html_escape_iter buf s (size s).
 

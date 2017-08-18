@@ -746,7 +746,7 @@ Fixpoint sse_html_escape buf ptr n :=
       else
         let i := cmpestri_ubyte_eqany_ppol_lsig
             need_to_escape 5 (m128_of_bptr ptr) 16 in
-        if i == 16 then
+        if eqn i 16 then
           sse_html_escape (bufaddmem buf ptr 16) (bptradd ptr 16) (n' - 15)
         else
           let buf2 := bufaddmem buf ptr i in
@@ -760,4 +760,21 @@ Fixpoint sse_html_escape buf ptr n :=
 
 Definition sse_html_escape_stub s :=
   s_of_buf (sse_html_escape (bufctr [::]) (bptr 0 s) (size s)).
+
+Require Import Monomorph.monomorph.
+
+Terminate Monomorphization html_escape_byte.
+
+Terminate Monomorphization cmpestri_ubyte_eqany_ppol_lsig.
+Terminate Monomorphization need_to_escape.
+Terminate Monomorphization m128_of_bptr.
+Terminate Monomorphization bptradd.
+Terminate Monomorphization bufaddmem.
+Terminate Monomorphization bptrget.
+Terminate Monomorphization subn.
+Terminate Monomorphization eqn.
+Terminate Monomorphization leq.
+Monomorphization trec_html_escape.
+Monomorphization sse_html_escape.
+GenC _trec_html_escape _sse_html_escape.
 

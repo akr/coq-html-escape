@@ -750,12 +750,12 @@ Fixpoint sse_html_escape buf ptr n :=
           sse_html_escape (bufaddmem buf ptr 16) (bptradd ptr 16) (n' - 15)
         else
           let buf2 := bufaddmem buf ptr i in
-          let rest := bptradd ptr i in
-          let c := bptrget rest in
-          let rest2 := bptradd rest 1 in
-          let: (escptr, escn) := html_escape_byte (bptrget ptr) in
+          let ptr2 := bptradd ptr i in
+          let c := bptrget ptr2 in
+          let ptr3 := bptradd ptr2 1 in
+          let: (escptr, escn) := html_escape_byte c in
           let buf3 := bufaddmem buf2 escptr escn in
-          sse_html_escape buf3 rest2 (n' - i)
+          sse_html_escape buf3 ptr3 (n' - i)
   end.
 
 Definition sse_html_escape_stub s :=

@@ -2,6 +2,8 @@ From mathcomp Require Import all_ssreflect.
 Require Import String.
 Require Import Ascii.
 
+Require Import htmlescape.listutils.
+
 Local Open Scope string_scope. (* enable "string-literal" and str ++ str *)
 Local Open Scope seq_scope. (* prefer seq ++ seq over str ++ str *)
 
@@ -196,8 +198,8 @@ Fixpoint html_escape s :=
   match s with
   | nil => nil
   | c :: s' =>
-      (if assoc c html_escape_al is Some (_, e) then
-        "&" ++ e ++ ";"
+      (if assoc c html_escape_al is Some p then
+        "&" ++ p.2 ++ ";"
       else
         [:: c]) ++
       html_escape s'
@@ -535,32 +537,147 @@ Proof.
   by apply IH.
 Qed.
 
-Fixpoint trec_html_escape_iter buf s :=
-  match s with
-  | nil => buf
-  | c :: s' =>
-      trec_html_escape_iter
-        (buf ++
-          (if assoc c html_escape_al is Some (_, e) then
-            "&" ++ e ++ ";"
-          else
-            [:: c]))
-        s'
+(* pointer to byte (unsigned char).
+  "cptr i lst" represents a pointer to i'th char in lst.
+  restriction: 0 <= i <= size lst.
+  Although a pointer with i = size lst is valid, its dereference is invalid.
+*)
+Inductive byteptr := bptr : nat -> seq ascii -> byteptr.
+
+(* accessors for Coq proof *)
+Definition i_of_bptr ptr := let: bptr i s := ptr in i.
+Definition s_of_bptr ptr := let: bptr i s := ptr in s.
+
+(* precondition: i + n <= size s
+  C: p + n *)
+Definition bptradd ptr n :=
+  let i := i_of_bptr ptr in
+  let s := s_of_bptr ptr in
+  bptr (i + n) s.
+
+(* precondition: n <= i
+  C: p - n *)
+Definition bptrsub ptr n :=
+  let i := i_of_bptr ptr in
+  let s := s_of_bptr ptr in
+  bptr (i - n) s.
+
+(* precondition: i < size s
+  C: *p *)
+Definition bptrget ptr :=
+  let i := i_of_bptr ptr in
+  let s := s_of_bptr ptr in
+  nth "000"%char s i.
+
+(* buffer implemented using Ruby String.
+  Encoding is not considiered.
+  The C type is struct rbuf { size_t len; VALUE str }.
+  "len" is used to detect the non-linear use of the string.
+  If the string is used linearly, len == RSTRING_LEN(str) is hold.
+  We assume this condition in following explanation.
+ *)
+Inductive buffer := bufctr of seq ascii.
+
+(* accessor for Coq proof *)
+Definition s_of_buf buf := let: bufctr s := buf in s.
+
+(* (struct rbuf){ len + 1, rb_str_buf_cat(str, &b, 1) } *)
+Definition bufaddbyte buf b :=
+  let s := s_of_buf buf in
+  bufctr (rcons s b).
+
+(* precondition: i + n <= size s'
+  (struct rbuf){ len + n, rb_str_buf_cat(str, ptr, n) }
+ *)
+Definition bufaddmem buf ptr n :=
+  let s := s_of_buf buf in
+  let i := i_of_bptr ptr in
+  let s' := s_of_bptr ptr in
+  bufctr (s ++ take n (drop i s')).
+
+(* This function will be implemented as a table in C *)
+Definition html_escape_byte c :=
+  if assoc c html_escape_al is Some p then
+    let s := "&" ++ p.2 ++ ";" in
+    (bptr 0 s, size s)
+  else
+    (bptr 0 [:: c], 1).
+
+Fixpoint trec_html_escape buf ptr n :=
+  match n with
+  | 0 => buf
+  | n'.+1 =>
+      let: (escptr, escn) := html_escape_byte (bptrget ptr) in
+      trec_html_escape
+        (bufaddmem buf escptr escn)
+        (bptradd ptr 1)
+        n'
   end.
 
-Definition trec_html_escape s := trec_html_escape_iter nil s.
+Definition trec_html_escape_stub s :=
+  s_of_buf (trec_html_escape (bufctr [::]) (bptr 0 s) (size s)).
 
-Lemma trec_html_escape_ok s : trec_html_escape s = html_escape s.
+Lemma html_escape_byte_split c : html_escape_byte c =
+  ((if assoc c html_escape_al is Some p then
+    bptr 0 ("&" ++ p.2 ++ ";")
+  else
+    bptr 0 [:: c]),
+  (if assoc c html_escape_al is Some p then
+    (size p.2).+2
+  else
+    1)).
 Proof.
-  simpl in s.
-  rewrite /trec_html_escape.
+  simpl.
+  case: eqP => [<-|/eqP /negbTE not_amp]; first by [].
+  case: eqP => [<-|/eqP /negbTE not_lt]; first by [].
+  case: eqP => [<-|/eqP /negbTE not_gt]; first by [].
+  case: eqP => [<-|/eqP /negbTE not_quot]; first by [].
+  case: eqP => [<-|/eqP /negbTE not_apos]; first by [].
+  rewrite /html_escape_byte /=.
+  by rewrite not_amp not_lt not_gt not_quot not_apos.
+Qed.
+
+Lemma trec_html_escape_ok s : trec_html_escape_stub s = html_escape s.
+Proof.
+  rewrite /trec_html_escape_stub.
   rewrite -[html_escape s]cat0s.
   move: [::] => buf.
-  elim: s buf.
-    move=> buf /=.
-    by rewrite cats0.
-  move=> c s IH buf /=.
-  by rewrite IH catA.
+  rewrite -{3}[s]drop0.
+  move: (Logic.eq_refl (size s)).
+  rewrite -{1}[size s]add0n.
+  move: 0 => i.
+  move: {1 3}(size s) => j.
+  elim: j i buf.
+    move=> i buf /=.
+    rewrite addn0 => ->.
+    by rewrite drop_size cats0.
+  move=> j IH i buf Hij /=.
+  move Hc: (bptrget (bptr i s)) => c.
+  rewrite /bptrget /= in Hc.
+  have Hs : take i s ++ c :: drop i.+1 s = s.
+    clear IH.
+    rewrite -{3}[s](cat_take_drop i).
+    congr (take i s ++ _).
+    rewrite [drop i s](drop_nth "000"%char).
+      by rewrite -Hc.
+    by rewrite -Hij addnS ltnS leq_addr.
+  rewrite html_escape_byte_split /=.
+  move Ha: (if "&"%char == c then _ else _) => a.
+  rewrite -{2}[s]Hs drop_size_cat; last first.
+    rewrite size_takel; first by [].
+    by rewrite -Hij leq_addr.
+  rewrite /= {}Ha catA.
+  rewrite /bptradd /= addn1.
+  case: a.
+    move=> p.
+    rewrite /bufaddmem /=.
+    rewrite IH; last by rewrite addSnnS.
+    congr ((buf ++ "&"%char :: _) ++ html_escape (drop i.+1 s)).
+    rewrite (_ : (size p.2).+1 = (size (p.2 ++ [:: ";"%char]))).
+      by rewrite take_size.
+    by rewrite size_cat /= addn1.
+  rewrite /bufaddmem /=.
+  by rewrite IH; last by rewrite addSnnS.
 Qed.
 
 Inductive m128 := c128 :

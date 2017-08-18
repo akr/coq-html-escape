@@ -723,6 +723,8 @@ Proof.
   by rewrite /= take0.
 Qed.
 
+Definition m128_of_bptr ptr := m128_of_seq (s_of_bptr ptr).
+
 (* _mm_cmpestri(a, la, b, lb,
      _SIDD_UBYTE_OPS|_SIDD_CMP_EQUAL_ANY|
      _SIDD_POSITIVE_POLARITY|_SIDD_LEAST_SIGNIFICANT) *)
@@ -735,26 +737,27 @@ Definition cmpestri_ubyte_eqany_ppol_lsig (a : m128) (la : nat) (b : m128) (lb :
 
 Definition need_to_escape := m128_of_seq [:: "&"%char; "<"%char; ">"%char; """"%char; "'"%char].
 
-Fixpoint sse_html_escape_iter buf s n :=
+Fixpoint sse_html_escape buf ptr n :=
   match n with
   | 0 => buf
   | n'.+1 =>
       if n < 16 then
-        trec_html_escape_iter buf s
+        trec_html_escape buf ptr n
       else
         let i := cmpestri_ubyte_eqany_ppol_lsig
-            need_to_escape 5 (m128_of_seq s) 16 in
+            need_to_escape 5 (m128_of_bptr ptr) 16 in
         if i == 16 then
-          sse_html_escape_iter (buf ++ take 16 s) (drop 16 s) (n' - 15)
+          sse_html_escape (bufaddmem buf ptr 16) (bptradd ptr 16) (n' - 15)
         else
-          let buf2 := buf ++ take i s in
-          let rest := drop i s in
-          let c := head "000"%char rest in
-          let rest2 := behead rest in
-          let escaped := seq_of_str (assoc_default (String c EmptyString) c html_escape_al) in
-          let buf3 := buf2 ++ escaped in
-          sse_html_escape_iter buf3 rest2 (n' - i)
+          let buf2 := bufaddmem buf ptr i in
+          let rest := bptradd ptr i in
+          let c := bptrget rest in
+          let rest2 := bptradd rest 1 in
+          let: (escptr, escn) := html_escape_byte (bptrget ptr) in
+          let buf3 := bufaddmem buf2 escptr escn in
+          sse_html_escape buf3 rest2 (n' - i)
   end.
 
-Definition sse_html_escape buf s := sse_html_escape_iter buf s (size s).
+Definition sse_html_escape_stub s :=
+  s_of_buf (sse_html_escape (bufctr [::]) (bptr 0 s) (size s)).
 

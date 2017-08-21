@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <nmmintrin.h>
 
 #include <stdbool.h> /* defines bool type */
 #define n0_true() true
@@ -35,11 +36,12 @@ typedef const char *byteptr;
 #define n1_bptrget(p) (*(unsigned char *)p)
 #define n2_bptradd(p, n) (p + n)
 
-
 typedef struct {
   VALUE str;
   nat len;
 } buffer;
+
+#define buffer_new(n) ((buffer){ rb_str_buf_new(n), 0 })
 
 buffer
 n3_bufaddmem(buffer buf, byteptr p, nat n)
@@ -59,7 +61,6 @@ typedef struct {
 } prod_byteptr_nat;
 #define field0_pair_prod_byteptr_nat(pair) ((pair).p)
 #define field1_pair_prod_byteptr_nat(pair) ((pair).n)
-
 
 prod_byteptr_nat html_escape_byte_tbl[256] = {
   { "\x00", 1 }, /* "\x00" */
@@ -322,6 +323,16 @@ prod_byteptr_nat html_escape_byte_tbl[256] = {
 
 #define n1_html_escape_byte(a) (html_escape_byte_tbl[(unsigned char)a])
 
+typedef __m128i m128;
+
+#define n1_m128_of_bptr(p) _mm_loadu_si128((__m128i const*)(p))
+#define n0_need_to_escape() n1_m128_of_bptr("&<>\"'\0\0\0\0\0\0\0\0\0\0\0")
+
+#define n4_cmpestri_ubyte_eqany_ppol_lsig(a, la, b, lb) \
+  _mm_cmpestri(a, la, b, lb, \
+      _SIDD_UBYTE_OPS|_SIDD_CMP_EQUAL_ANY| \
+      _SIDD_POSITIVE_POLARITY|_SIDD_LEAST_SIGNIFICANT)
+
 /*
 m128
 n1_m128_of_bptr
@@ -337,19 +348,35 @@ n1_html_escape_byte
 VALUE
 trec_html_escape(VALUE self, VALUE str)
 {
-  VALUE buf;
+  buffer buf;
 
   StringValue(str);
   RB_GC_GUARD(str);
 
-  buf = rb_str_buf_new(RSTRING_LEN(str));
-  n3_trec_html_escape((buffer){ buf, 0 }, RSTRING_PTR(str), RSTRING_LEN(str));
+  buf = buffer_new(RSTRING_LEN(str));
+  buf = n3_sse_html_escape(buf, RSTRING_PTR(str), RSTRING_LEN(str));
 
-  return buf;
+  return buf.str;
+}
+
+VALUE
+sse_html_escape(VALUE self, VALUE str)
+{
+  buffer buf;
+
+  StringValue(str);
+  RB_GC_GUARD(str);
+
+  buf = buffer_new(RSTRING_LEN(str));
+
+  n3_sse_html_escape(buf, RSTRING_PTR(str), RSTRING_LEN(str));
+
+  return buf.str;
 }
 
 void
 Init_verified_html_escape()
 {
   rb_define_global_function("trec_html_escape", trec_html_escape, 1);
+  rb_define_global_function("sse_html_escape", sse_html_escape, 1);
 }

@@ -1,4 +1,4 @@
-From mathcomp Require Import ssreflect ssrbool eqtype ssrnat seq.
+From mathcomp Require Import all_ssreflect.
 
 Section ListUtils.
 
@@ -26,3 +26,36 @@ Proof.
 Qed.
 
 End ListUtils.
+
+
+Fixpoint map_prefix {T1 T2 : Type} (f : T1 -> option T2) (s : seq T1) : seq T2 :=
+  match s with
+  | nil => nil
+  | e :: s' =>
+      if f e is Some v then
+        v :: map_prefix f s'
+      else
+        nil
+  end.
+
+Lemma map_prefix_cat {T1 T2 : Type} (f : T1 -> option T2) e s1 s2 :
+  f e = None -> map_prefix f (s1 ++ e :: s2) = map_prefix f s1.
+Proof.
+  move=> H.
+  elim: s1.
+    simpl.
+    by rewrite H.
+  move=> a s IH /=.
+  by rewrite IH.
+Qed.
+
+Lemma size_map_prefix_full {T1 T2 : Type} (f : T1 -> option T2) s :
+  (size (map_prefix f s) == size s) = (all (isSome \o f) s).
+Proof.
+  elim: s.
+    by [].
+  move=> e s IH /=.
+  case: (f e) => [_ /=|]; last by [].
+  by rewrite eqSS.
+Qed.
+

@@ -1,2 +1,5 @@
 -Q theories htmlescape
 theories/listutils.v
+theories/assoc.v
+theories/ssrstr.v
+theories/htmlescape.v

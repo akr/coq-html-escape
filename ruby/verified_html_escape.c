@@ -49,7 +49,7 @@ n3_bufaddmem(buffer buf, byteptr p, nat n)
     return (buffer){ buf.str, buf.len + n };
   }
   else {
-    abort();
+    rb_bug("buffer used non-linearly");
   }
 }
 

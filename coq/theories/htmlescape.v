@@ -296,17 +296,22 @@ Fixpoint trec_html_escape buf ptr n :=
 Definition trec_html_escape_stub s :=
   s_of_buf (trec_html_escape (bufctr [::]) (bptr 0 s) (size s)).
 
-Lemma html_escape_byte_split c : html_escape_byte c =
-  ((if assoc c html_escape_al is Some p then
+Definition html_escape_byte_ptr c :=
+  if assoc c html_escape_al is Some p then
     bptr 0 ("&" ++ p.2 ++ ";")
   else
-    bptr 0 [:: c]),
-  (if assoc c html_escape_al is Some p then
+    bptr 0 [:: c].
+
+Definition html_escape_byte_len c :=
+  if assoc c html_escape_al is Some p then
     (size p.2).+2
   else
-    1)).
+    1.
+
+Lemma html_escape_byte_split c : html_escape_byte c =
+  (html_escape_byte_ptr c, html_escape_byte_len c).
 Proof.
-  rewrite /assoc /=.
+  rewrite /html_escape_byte_ptr /html_escape_byte_len /assoc /=.
   case: eqP => [<-|/eqP /negbTE not_amp]; first by [].
   case: eqP => [<-|/eqP /negbTE not_lt]; first by [].
   case: eqP => [<-|/eqP /negbTE not_gt]; first by [].
@@ -314,6 +319,30 @@ Proof.
   case: eqP => [<-|/eqP /negbTE not_apos]; first by [].
   rewrite /html_escape_byte /assoc /=.
   by rewrite not_amp not_lt not_gt not_quot not_apos.
+Qed.
+
+Lemma i_of_html_escape_byte_ptr c : i_of_bptr (html_escape_byte_ptr c) = 0.
+Proof.
+  rewrite /html_escape_byte_ptr.
+  by case: (assoc c html_escape_al).
+Qed.
+
+Lemma take_html_escape_byte_len_ptr c :
+    take (html_escape_byte_len c) (s_of_bptr (html_escape_byte_ptr c)) =
+    s_of_bptr (html_escape_byte_ptr c).
+Proof.
+  rewrite /html_escape_byte_len /html_escape_byte_ptr.
+  case: (assoc c html_escape_al) => [p|] /=; last by [].
+  rewrite (_ : (size p.2).+1 = size (p.2 ++ [:: ";"%char])).
+    by rewrite take_size.
+  by rewrite size_cat addn1.
+Qed.
+
+Lemma s_of_html_escape_byteptr c : s_of_bptr (html_escape_byte_ptr c) = html_escape [:: c].
+Proof.
+  rewrite /html_escape_byte_ptr /html_escape.
+  case: (assoc c html_escape_al) => [p|] /=; last by [].
+  by rewrite cats0.
 Qed.
 
 Lemma trec_html_escape_ok1 s buf i j :
@@ -341,15 +370,15 @@ Proof.
     by rewrite -Hij leq_addr.
   rewrite /= catA.
   rewrite /bptradd /= addn1.
-  case: (assoc c html_escape_al).
-    move=> p.
-    rewrite /bufaddmem /=.
+  rewrite /bufaddmem /= i_of_html_escape_byte_ptr drop0.
+  rewrite /html_escape_byte_ptr.
+  rewrite /html_escape_byte_len.
+  case: (assoc c html_escape_al) => [p|] /=.
     rewrite IH; last by rewrite addSnnS.
     congr ((buf ++ "&"%char :: _) ++ html_escape (drop i.+1 s)).
     rewrite (_ : (size p.2).+1 = (size (p.2 ++ [:: ";"%char]))).
       by rewrite take_size.
     by rewrite size_cat /= addn1.
-  rewrite /bufaddmem /=.
   by rewrite IH; last by rewrite addSnnS.
 Qed.
 
@@ -443,6 +472,12 @@ Proof.
   by [].
 Qed.
 
+Lemma take_seq_of_m128 n m : 16 <= n -> take n (seq_of_m128 m) = seq_of_m128 m.
+Proof.
+  do 16 (case: n => [|n]; first by []).
+  by case: m.
+Qed.
+
 Definition m128_of_bptr ptr := m128_of_seq (drop (i_of_bptr ptr) (s_of_bptr ptr)).
 
 (* _mm_cmpestri(a, la, b, lb,
@@ -451,8 +486,22 @@ Definition m128_of_bptr ptr := m128_of_seq (drop (i_of_bptr ptr) (s_of_bptr ptr)
 Definition cmpestri_ubyte_eqany_ppol_lsig (a : m128) (la : nat) (b : m128) (lb : nat) :=
   let sa := take la (seq_of_m128 a) in
   let sb := take lb (seq_of_m128 b) in
-  let p x := x \in sa in
+  let p := mem sa in
   if has p sb then find p sb else 16.
+
+Lemma cmpestri_minn16la a la b lb : cmpestri_ubyte_eqany_ppol_lsig a la b lb =
+  cmpestri_ubyte_eqany_ppol_lsig a (minn 16 la) b lb.
+Proof.
+  rewrite /cmpestri_ubyte_eqany_ppol_lsig.
+  by rewrite minnC take_minn [take 16 _]take_seq_of_m128.
+Qed.
+
+Lemma cmpestri_minn16lb a la b lb : cmpestri_ubyte_eqany_ppol_lsig a la b lb =
+  cmpestri_ubyte_eqany_ppol_lsig a la b (minn 16 lb).
+Proof.
+  rewrite /cmpestri_ubyte_eqany_ppol_lsig.
+  by rewrite minnC take_minn [take 16 _]take_seq_of_m128.
+Qed.
 
 Definition need_to_escape := m128_of_seq [:: "&"%char; "<"%char; ">"%char; """"%char; "'"%char].
 
@@ -484,6 +533,18 @@ Proof.
   by exists x.
 Qed.
 
+Lemma negb_has_take_find {T : eqType} p (s : seq T) : ~~ has p (take (find p s) s).
+Proof.
+  elim: s.
+    by [].
+  move=> v s IH /=.
+  move Hpv : (p v) => pv.
+  case: pv Hpv.
+    by [].
+  move=> /= ->.
+  by rewrite IH.
+Qed.
+
 Lemma cmpestri_found a b i :
   size a <= 16 -> size b <= 16 ->
   i = cmpestri_ubyte_eqany_ppol_lsig
@@ -500,15 +561,16 @@ Proof.
   rewrite Ha Hb 2![if ~~ true then _ else _]/= 2!take_size.
   rewrite /in_mem.
   move=> Hif Hi.
-  have Hhas : has [eta mem a] b.
+  have Hhas : has (mem a) b.
     move: Hif Hi.
-    by case: (has [eta mem a] b) => [|->].
+    by case: (has (mem a) b) => [|->].
   rewrite Hhas in Hif.
   split.
-    apply/allP => x.
-    
-  
-About before_find.
+    rewrite all_predC.
+    rewrite Hif.
+    by apply negb_has_take_find.
+  rewrite Hif.
+  by apply nth_find.
 Qed.
 
 Fixpoint sse_html_escape buf ptr n :=
@@ -622,53 +684,56 @@ Proof.
         by rewrite size_takel; last rewrite -Hds.
       by apply Hcmpestri.
     by rewrite html_escape_rawonly; last apply Hnotin.
-  
-  
-    
-  
-        rewrite take_size.
-          rewrite -Hds.
-        rewrite -Hds.
-    apply (cmpestri_none _ _) in Hcmpestri.
-    move: Hds Hj Hcmpestri.
-
-
-    case: (drop i s) => [|c0 s1]; first by [].
-    case: s1 => [/= ->|c1 s1]; first by [].
-    case: s1 => [/= ->|c2 s1]; first by [].
-    case: s1 => [/= ->|c3 s1]; first by [].
-    case: s1 => [/= ->|c4 s1]; first by [].
-    case: s1 => [/= ->|c5 s1]; first by [].
-    case: s1 => [/= ->|c6 s1]; first by [].
-    case: s1 => [/= ->|c7 s1]; first by [].
-    case: s1 => [/= ->|c8 s1]; first by [].
-    case: s1 => [/= ->|c9 s1]; first by [].
-    case: s1 => [/= ->|ca s1]; first by [].
-    case: s1 => [/= ->|cb s1]; first by [].
-    case: s1 => [/= ->|cc s1]; first by [].
-    case: s1 => [/= ->|cd s1]; first by [].
-    case: s1 => [/= ->|ce s1]; first by [].
-    case: s1 => [/= ->|cf s1]; first by [].
-    simpl.
-    rewrite cmpestri_none.
-
-
-    case: s1.
-      simpl.
-      by move=> ->.
-      
-  
-
-  rewrite ltnS.
-    
-    rewrite html_escape_byte_split.
-    rewrite trec_html_escape_ok1; last first.
-      by rewrite -Hij addn1 addSnnS.
-    rewrite (_ : (i_of_bptr _) = 0); last first.
-      by case: (assoc _ _).
-
-    
-  
+  rewrite /need_to_escape /m128_of_bptr /=.
+  rewrite -[m128_of_seq (drop i s)](m128_of_seq_take 16); last by [].
+  move Hcmpestri: (cmpestri_ubyte_eqany_ppol_lsig _ _ _ _) => k.
+  rewrite {2}(_ : 16 = size (take 16 (drop i s))) in Hcmpestri; last first.
+    by rewrite size_takel; last rewrite size_drop -Hij addKn.
+  move=> Hk.
+  have : k < 16; first by [].
+  rewrite -{1}Hcmpestri.
+  move=> Hk'.
+  apply (cmpestri_found
+    [:: "&"%char; "<"%char; ">"%char; """"%char; "'"%char]
+    (take 16 (drop i s))) in Hk'; last first.
+        by [].
+      by rewrite size_takel; last rewrite size_drop -Hij addKn.
+    by [].
+  rewrite Hcmpestri in Hk'.
+  case: Hk' => Hbefore.
+  rewrite nth_take; last by [].
+  rewrite nth_drop => Hfound.
+  rewrite html_escape_byte_split.
+  rewrite /bufaddmem /bptradd /bptrget /=.
+  rewrite i_of_html_escape_byte_ptr drop0.
+  rewrite take_html_escape_byte_len_ptr.
+  rewrite IH; last first.
+      rewrite addnAC.
+      rewrite [i + k]addnC.
+      rewrite [k + i + (j - k)]addnAC.
+      rewrite subnKC.
+        by rewrite -Hij addn1 addnS addnC.
+      rewrite -ltnS.
+      by apply (leq_trans Hk Hj).
+    by rewrite ltnS leq_subr.
+  rewrite -2!catA.
+  rewrite -{2}[drop i s](cat_take_drop k).
+  rewrite drop_drop [k + i]addnC.
+  rewrite -[drop (i + k) s](cat_take_drop 1).
+  rewrite drop_drop [1 + (i + k)]addnC.
+  rewrite 2!html_escape_cat.
+  congr (buf ++ _ ++ _ ++ _).
+    rewrite html_escape_rawonly; first by [].
+    rewrite take_take in Hbefore.
+      by apply Hbefore.
+    by apply ltnW.
+  rewrite s_of_html_escape_byteptr.
+  congr (html_escape _).
+  clear Hcmpestri Hbefore Hfound.
+  rewrite (drop_nth "000"%char); last first.
+    rewrite -Hij ltn_add2l.
+    by apply (leq_trans Hk Hj).
+  by rewrite /= take0.
 Qed.
 
 Require Import Monomorph.monomorph.

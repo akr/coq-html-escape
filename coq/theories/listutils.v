@@ -16,6 +16,27 @@ elim: s a b => // h t H [ [] | a] // [ | b] //=.
 rewrite ltnS => ?; by rewrite H.
 Qed.
 
+Lemma take_minn m n s : take (minn m n) s = take m (take n s).
+Proof.
+  case: (ltnP n m).
+    move=> H.
+    rewrite minnC /minn H.
+    rewrite [take m _]take_oversize.
+      by [].
+    rewrite size_take.
+    case: ltnP.
+      move=> _.
+      by apply ltnW.
+    move=> Hs.
+    apply (leq_trans Hs).
+    by apply ltnW.
+  move=> H.
+  rewrite minnC /minn.
+  rewrite ltnNge H /=.
+  symmetry.
+  by apply take_take.
+Qed.
+
 Lemma catr_take n (s1 s2 : seq T) : s1 ++ take n s2 = take (size s1 + n) (s1 ++ s2).
 Proof. by rewrite take_cat -ltn_subRL subnn ltn0 addnC addnK. Qed.
 

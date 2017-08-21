@@ -492,7 +492,23 @@ Lemma cmpestri_found a b i :
   let p x := x \notin a in all p (take i b) /\
   nth "000"%char b i \in a.
 Proof.
+  move=> Ha Hb.
+  rewrite /cmpestri_ubyte_eqany_ppol_lsig.
+  rewrite seq_of_m128_of_seq; last by [].
+  rewrite seq_of_m128_of_seq; last by [].
+  rewrite 2![minn _ 16]minnC /minn 2![16 < _]ltnNge.
+  rewrite Ha Hb 2![if ~~ true then _ else _]/= 2!take_size.
+  rewrite /in_mem.
+  move=> Hif Hi.
+  have Hhas : has [eta mem a] b.
+    move: Hif Hi.
+    by case: (has [eta mem a] b) => [|->].
+  rewrite Hhas in Hif.
+  split.
+    apply/allP => x.
+    
   
+About before_find.
 Qed.
 
 Fixpoint sse_html_escape buf ptr n :=

@@ -19,4 +19,6 @@ clean :
 	  src/*.d \
 	  theories/*.glob \
 	  theories/*.vo \
-	  theories/*.d
+	  theories/*.d \
+	  theories/*.aux \
+	  theories/.*.aux

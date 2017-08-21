@@ -28,8 +28,6 @@ typedef uint64_t nat;
 #define n2_leq(a,b) ((a)<=(b))
 #define n2_eqn(a,b) ((a)==(b))
 
-#define n1_odd(n) ((n)&1)
-
 typedef char ascii;
 
 typedef const char *byteptr;
@@ -332,16 +330,6 @@ typedef __m128i m128;
   _mm_cmpestri(a, la, b, lb, \
       _SIDD_UBYTE_OPS|_SIDD_CMP_EQUAL_ANY| \
       _SIDD_POSITIVE_POLARITY|_SIDD_LEAST_SIGNIFICANT)
-
-/*
-m128
-n1_m128_of_bptr
-n4_cmpestri_ubyte_eqany_ppol_lsig
-prod_byteptr_nat
-n0_need_to_escape
-
-n1_html_escape_byte
-*/
 
 #include "../coq/gen/esc.c"
 

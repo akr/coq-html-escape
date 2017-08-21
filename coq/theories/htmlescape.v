@@ -439,5 +439,5 @@ Terminate Monomorphization eqn.
 Terminate Monomorphization leq.
 Monomorphization trec_html_escape.
 Monomorphization sse_html_escape.
-GenC _trec_html_escape _sse_html_escape.
+GenCFile "gen/esc.c" _trec_html_escape _sse_html_escape.
 

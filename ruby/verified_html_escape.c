@@ -319,7 +319,7 @@ prod_byteptr_nat html_escape_byte_tbl[256] = {
   { "\xff", 1 }, /* "\xFF" */
 };
 
-#define n1_html_escape_byte(a) (html_escape_byte_tbl[(unsigned char)a])
+#define n1_html_escape_byte_table(a) (html_escape_byte_tbl[(unsigned char)a])
 
 typedef __m128i m128;
 

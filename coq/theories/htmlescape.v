@@ -15,7 +15,8 @@ Definition assoc {A : eqType} {B : Type} (a : A) (al : seq (A * B)) :=
 Definition rassoc {A : Type} {B : eqType} (b : B) (al : seq (A * B)) :=
   nosimpl (@assoc.rassoc A B b al).
 
-Definition html_escape_al := [::
+Definition html_escape_alist :=
+  map (fun p => (p.1, seq_of_str p.2)) [::
   ("&"%char, "amp");
   ("<"%char, "lt");
   (">"%char, "gt");
@@ -23,33 +24,30 @@ Definition html_escape_al := [::
   ("'"%char, "#39")
 ].
 
-Fixpoint html_escape s :=
-  match s with
-  | nil => nil
-  | c :: s' =>
-      (if assoc c html_escape_al is Some p then
-        "&" ++ p.2 ++ ";"
-      else
-        [:: c]) ++
-      html_escape s'
-  end.
+Definition html_escape_byte c :=
+  if assoc c html_escape_alist is Some p then
+    "&" ++ p.2 ++ ";"
+  else
+    [:: c].
+
+Definition html_escape s := flatten (map html_escape_byte s).
 
 Goal html_escape "abc&def<>""'" = "abc&amp;def&lt;&gt;&quot;&#39;". by []. Qed.
 
 Lemma html_escape_cat s1 s2 : html_escape (s1 ++ s2) = html_escape s1 ++ html_escape s2.
-Proof.
-  elim: s1.
-    by [].
-  move=> c s1 /= ->.
-  by rewrite catA.
-Qed.
+Proof. by rewrite /html_escape -flatten_cat map_cat. Qed.
 
-Definition html_unescape_al := map (fun p => (p.1, seq_of_str p.2)) [::
+Lemma html_escape_cons c s : html_escape (c :: s) = html_escape_byte c ++ html_escape s.
+Proof. by rewrite /html_escape /flatten. Qed.
+
+Definition html_char_entities :=
+  map (fun p => (p.1, seq_of_str p.2)) [::
   ("&"%char, "amp");
   ("<"%char, "lt");
   (">"%char, "gt");
   (""""%char, "quot");
   ("'"%char, "apos")
+  (* ... more character entities here ... *)
 ].
 
 Fixpoint html_unescape s :=
@@ -79,7 +77,7 @@ Fixpoint html_unescape s :=
         let s2 := drop n1 s1 in
         if start_with ";" s2 is Some n2 then
           let s3 := drop n2 s2 in
-          if rassoc name html_unescape_al is Some (c, _) then
+          if rassoc name html_char_entities is Some (c, _) then
             c :: html_unescape s3
           else
             "&"%char :: html_unescape s1
@@ -90,128 +88,124 @@ Fixpoint html_unescape s :=
   | c :: s1 => c :: html_unescape s1
   end.
 
-Lemma html_unescape_escape (s : seq ascii) : html_unescape (html_escape s) = s.
+Lemma html_unescape_escape s : html_unescape (html_escape s) = s.
 Proof.
+  rewrite /html_escape /=.
   elim: s => [|c str IH /=]; first by [].
-  rewrite /assoc /=.
+  rewrite /html_escape_byte /assoc /=.
   case: eqP => [<- /=|/eqP not_amp]; first by rewrite drop0 IH.
-  case: eqP => [<- /=|/eqP not_lt]; first by rewrite drop0 IH.
-  case: eqP => [<- /=|/eqP not_gt]; first by rewrite drop0 IH.
-  case: eqP => [<- /=|/eqP not_quot]; first by rewrite drop0 IH.
-  case: eqP => [<- /=|/eqP not_apos]; first by rewrite drop0 IH.
+  do 4 (case: eqP => [<- /=|/eqP _]; first by rewrite drop0 IH).
   rewrite [_ ++ _]/=.
-  move: not_amp not_lt not_gt not_quot not_apos.
-  case: c => b1 b2 b3 b4 b5 b6 b7 b8.
-  case: b1; case: b2; case: b3; case: b4;
-  case: b5; case: b6; case: b7; case: b8; by rewrite /= IH.
+  case: c not_amp.
+  (* "&" is 0b00100110 *)
+  case; first by rewrite /= IH. (* LSB of "&" *)
+  case; last by rewrite /= IH.
+  case; last by rewrite /= IH.
+  case; first by rewrite /= IH.
+  case; first by rewrite /= IH.
+  case; last by rewrite /= IH.
+  case; first by rewrite /= IH.
+  case; first by rewrite /= IH. (* MSB of "&" *)
+  by [].
 Qed.
 
-Inductive esc_spec : seq ascii -> seq ascii -> Prop :=
-  | esc_empty : esc_spec nil nil
-  | esc_normal : forall c raw escaped, c != "&"%char ->
-      esc_spec raw escaped -> esc_spec (c :: raw) (c :: escaped)
-  | esc_entity : forall c entity raw escaped, (c, entity) \in html_unescape_al ->
-      esc_spec raw escaped -> esc_spec (c :: raw) ("&" ++ entity ++ ";" ++ escaped)
-  | esc_hex : forall x m xdigs raw escaped,
+(* HTML character and text specification.
+ * https://html.spec.whatwg.org/multipage/syntax.html#text-2
+ * Note: Unicode is not considered.
+ *)
+Inductive char_spec : ascii -> seq ascii -> Prop :=
+  | char_normal : forall c, c != "&"%char -> char_spec c [:: c]
+  | char_named : forall c entity, (c, entity) \in html_char_entities ->
+      char_spec c ("&" ++ entity ++ ";")
+  | char_dec : forall m digs, digs != nil -> decode_decimal digs = Some m ->
+      char_spec (ascii_of_nat m) ("&#" ++ digs ++ ";")
+  | char_hex : forall x m xdigs,
       downcase_ascii x == "x"%char -> xdigs != nil -> decode_hex xdigs = Some m ->
-      esc_spec raw escaped ->
-      esc_spec (ascii_of_nat m :: raw) ("&#" ++ x :: xdigs ++ ";" ++ escaped)
-  | esc_dec : forall m digs raw escaped, digs != nil -> decode_decimal digs = Some m ->
-      esc_spec raw escaped ->
-      esc_spec (ascii_of_nat m :: raw) ("&#" ++ digs ++ ";" ++ escaped).
+      char_spec (ascii_of_nat m) ("&#" ++ x :: xdigs ++ ";").
+
+Inductive text_spec : seq ascii -> seq ascii -> Prop :=
+  | text_empty : text_spec [::] [::]
+  | text_cons : forall c s raw escaped,
+      char_spec c s -> text_spec raw escaped -> text_spec (c :: raw) (s ++ escaped).
 
 Lemma html_unescape_ok raw escaped :
-  esc_spec raw escaped -> html_unescape escaped = raw.
+  text_spec raw escaped -> html_unescape escaped = raw.
 Proof.
-  elim/esc_spec_ind.
-          by [].
-        clear raw escaped => c raw escaped.
-        rewrite {1}/eq_op [Equality.op _ _ _]/= /eqascii.
-        case: c => b1 b2 b3 b4 b5 b6 b7 b8.
-        rewrite 7!negb_and 3!eqb_id 5!eqbF_neg 5!negbK.
-        move=> Hbs _ /= ->.
-        move: Hbs.
-        case: b1 => [|/=]; first by [].
-        case: b2 => [/=|]; last by [].
-        case: b3 => [/=|]; last by [].
-        case: b4 => [|/=]; first by [].
-        case: b5 => [|/=]; first by [].
-        case: b6 => [/=|]; last by [].
-        case: b7 => [|/=]; first by [].
-        case: b8 => [|/=]; first by [].
-        by [].
-      clear raw escaped => c entity raw escaped al spec unesc.
-      move: al.
-      rewrite /html_unescape_al 5!in_cons in_nil.
-      do 5 (case/orP => [/eqP [] -> -> /=|]; first by rewrite drop0 unesc).
-      by [].
-    clear raw escaped.
-    move=> x m xdigs raw escaped /eqP Hx Hnonnil Hxdigs IH.
-    move Hrest: (x :: xdigs ++ ";" ++ escaped) => rest /=.
-    rewrite -Hx -{}Hrest eq_refl [drop 1 _]drop0 map_prefix_cat; last by [].
-    rewrite size_map_prefix_xdigs; last first.
-      by rewrite -decode_hex_all_isxdigit Hxdigs.
-    rewrite size_eq0 -[xdigs == [::]]negbK Hnonnil /= drop_size_cat; last by [].
-    rewrite eq_refl /= drop0 => ->.
-    congr (ascii_of_nat _ :: raw).
-    have Hsz: size (map_prefix nat_of_xdigit xdigs) == size xdigs.
-      by rewrite -decode_hex_eqsize Hxdigs.
-    move: Hxdigs.
-    by rewrite /decode_hex /decode_hex_prefix Hsz => [] [].
-  clear raw escaped.
-  move=> m digs raw escaped Hnonnil Hdigs IH.
-  simpl.
-  rewrite (_ : match digs ++ _ with | [::] => None | sch :: _ => _ end = None); last first.
-    have: all isdigit digs.
-      by rewrite -decode_dec_all_isdigit Hdigs.
-    case digs.
-      by [].
-    move=> c s' /= /andP [] Hisdigit _.
-    move: Hisdigit.
-    rewrite /isdigit /assoc /assoc_if /digit_chars /=.
-    do 10 (case: eqP => [<- _ /=|_]; first by []).
+  elim/text_spec_ind.
     by [].
-  rewrite drop0 map_prefix_cat; last by [].
-  rewrite size_map_prefix_digs; last first.
-    by rewrite -decode_dec_all_isdigit Hdigs.
-  rewrite size_eq0 -[digs == [::]]negbK Hnonnil /= drop_size_cat; last by [].
-  rewrite eq_refl /= drop0 => ->.
+  clear raw escaped.
+  move=> c s raw escaped.
+  move=> Hcs Hts IH.
+  case: Hcs; clear c.
+        case.
+        case; first by rewrite /= IH.
+        case; last by rewrite /= IH.
+        case; last by rewrite /= IH.
+        case; first by rewrite /= IH.
+        case; first by rewrite /= IH.
+        case; last by rewrite /= IH.
+        case; first by rewrite /= IH.
+        case; first by rewrite /= IH.
+        by [].
+      move=> c entity.
+      rewrite /html_char_entities 5!in_cons in_nil.
+      by do 5 (case/orP => [/eqP [] -> -> /=|]; first by rewrite /= drop0 IH).
+    move=> m digs Hnnil Hdigs /=.
+    rewrite (_ : match (digs ++ _) ++ escaped with | [::] => None | sch :: _ => _ end = None); last first.
+      have: all isdigit digs.
+        by rewrite -decode_dec_all_isdigit Hdigs.
+      case digs.
+        by [].
+      move=> c s' /= /andP [] Hisdigit _.
+      move: Hisdigit.
+      rewrite /isdigit /assoc /assoc_if /digit_chars /=.
+      do 10 (case: eqP => [<- _ /=|_]; first by []).
+      by [].
+    rewrite drop0 -catA map_prefix_cat; last by [].
+    rewrite size_map_prefix_digs; last first.
+      by rewrite -decode_dec_all_isdigit Hdigs.
+    rewrite size_eq0 -[digs == [::]]negbK Hnnil /= drop_size_cat; last by [].
+    rewrite /= drop0 IH.
+    congr (ascii_of_nat _ :: raw).
+    have Hsz: size (map_prefix nat_of_digit digs) == size digs.
+      by rewrite -decode_dec_eqsize Hdigs.
+    move: Hdigs.
+    by rewrite /decode_decimal /decode_decimal_prefix Hsz => [] [].
+  move=> x m xdigs /eqP Hx Hnonnil Hxdigs.
+  rewrite /= -Hx eq_refl drop0 -catA map_prefix_cat; last by [].
+  rewrite size_map_prefix_xdigs; last first.
+    by rewrite -decode_hex_all_isxdigit Hxdigs.
+  rewrite size_eq0 -[xdigs == [::]]negbK Hnonnil /= drop_size_cat; last by [].
+  rewrite eq_refl /= drop0 IH.
   congr (ascii_of_nat _ :: raw).
-  have Hsz: size (map_prefix nat_of_digit digs) == size digs.
-    by rewrite -decode_dec_eqsize Hdigs.
-  move: Hdigs.
-  by rewrite /decode_decimal /decode_decimal_prefix Hsz => [] [].
+  have Hsz: size (map_prefix nat_of_xdigit xdigs) == size xdigs.
+    by rewrite -decode_hex_eqsize Hxdigs.
+  move: Hxdigs.
+  by rewrite /decode_hex /decode_hex_prefix Hsz => [] [].
 Qed.
 
 Lemma html_escape_ok raw escaped :
-  html_escape raw = escaped -> esc_spec raw escaped.
+  html_escape raw = escaped -> text_spec raw escaped.
 Proof.
   elim: raw escaped.
     move=> escaped /= <-.
     constructor.
   move=> c s IH escaped /=.
-  have Hcat str : (("&"%char :: str ++ [:: ";"%char]) ++ html_escape s) =
-                   ("&" ++ str ++ [:: ";"%char] ++ html_escape s).
-    by rewrite 2!catA.
-  rewrite /assoc /=.
+  rewrite html_escape_cons /html_escape_byte /assoc /=.
   case: eqP => [<- <-|/eqP not_amp].
-    by rewrite Hcat; apply esc_entity; last apply IH.
+    by constructor; [constructor|apply IH].
   case: eqP => [<- <-|not_lt].
-    by rewrite Hcat; apply esc_entity; last apply IH.
+    by constructor; [constructor|apply IH].
   case: eqP => [<- <-|not_gt].
-    by rewrite Hcat; apply esc_entity; last apply IH.
+    by constructor; [constructor|apply IH].
   case: eqP => [<- <-|not_quot].
-    by rewrite Hcat; apply esc_entity; last apply IH.
+    by constructor; [constructor|apply IH].
   case: eqP => [<- <-|not_apos].
     rewrite (_ : "'"%char = ascii_of_nat 39); last by [].
-    rewrite (_ : (("&"%char :: "#39" ++ [:: ";"%char]) ++ html_escape s) =
-      ("&#" ++ "39" ++ ";" ++ html_escape s)); last by [].
-    apply esc_dec.
-        by [].
-      by [].
-    by apply IH.
-  move=> /= <-.
-  apply esc_normal.
+    by constructor; [apply char_dec|apply IH].
+  move=> <-.
+  constructor.
+    apply char_normal.
     by rewrite eq_sym.
   by apply IH.
 Qed.
@@ -275,8 +269,8 @@ Definition bufaddmem buf ptr n :=
   bufctr (s ++ take n (drop i s')).
 
 (* This function will be implemented as a table in C *)
-Definition html_escape_byte c :=
-  if assoc c html_escape_al is Some p then
+Definition html_escape_byte_table c :=
+  if assoc c html_escape_alist is Some p then
     let s := "&" ++ p.2 ++ ";" in
     (bptr 0 s, size s)
   else
@@ -286,7 +280,7 @@ Fixpoint trec_html_escape buf ptr n :=
   match n with
   | 0 => buf
   | n'.+1 =>
-      let: (escptr, escn) := html_escape_byte (bptrget ptr) in
+      let: (escptr, escn) := html_escape_byte_table (bptrget ptr) in
       trec_html_escape
         (bufaddmem buf escptr escn)
         (bptradd ptr 1)
@@ -297,18 +291,18 @@ Definition trec_html_escape_stub s :=
   s_of_buf (trec_html_escape (bufctr [::]) (bptr 0 s) (size s)).
 
 Definition html_escape_byte_ptr c :=
-  if assoc c html_escape_al is Some p then
+  if assoc c html_escape_alist is Some p then
     bptr 0 ("&" ++ p.2 ++ ";")
   else
     bptr 0 [:: c].
 
 Definition html_escape_byte_len c :=
-  if assoc c html_escape_al is Some p then
+  if assoc c html_escape_alist is Some p then
     (size p.2).+2
   else
     1.
 
-Lemma html_escape_byte_split c : html_escape_byte c =
+Lemma html_escape_byte_split c : html_escape_byte_table c =
   (html_escape_byte_ptr c, html_escape_byte_len c).
 Proof.
   rewrite /html_escape_byte_ptr /html_escape_byte_len /assoc /=.
@@ -317,14 +311,14 @@ Proof.
   case: eqP => [<-|/eqP /negbTE not_gt]; first by [].
   case: eqP => [<-|/eqP /negbTE not_quot]; first by [].
   case: eqP => [<-|/eqP /negbTE not_apos]; first by [].
-  rewrite /html_escape_byte /assoc /=.
+  rewrite /html_escape_byte_table /assoc /=.
   by rewrite not_amp not_lt not_gt not_quot not_apos.
 Qed.
 
 Lemma i_of_html_escape_byte_ptr c : i_of_bptr (html_escape_byte_ptr c) = 0.
 Proof.
   rewrite /html_escape_byte_ptr.
-  by case: (assoc c html_escape_al).
+  by case: (assoc c html_escape_alist).
 Qed.
 
 Lemma take_html_escape_byte_len_ptr c :
@@ -332,7 +326,7 @@ Lemma take_html_escape_byte_len_ptr c :
     s_of_bptr (html_escape_byte_ptr c).
 Proof.
   rewrite /html_escape_byte_len /html_escape_byte_ptr.
-  case: (assoc c html_escape_al) => [p|] /=; last by [].
+  case: (assoc c html_escape_alist) => [p|] /=; last by [].
   rewrite (_ : (size p.2).+1 = size (p.2 ++ [:: ";"%char])).
     by rewrite take_size.
   by rewrite size_cat addn1.
@@ -340,8 +334,8 @@ Qed.
 
 Lemma s_of_html_escape_byteptr c : s_of_bptr (html_escape_byte_ptr c) = html_escape [:: c].
 Proof.
-  rewrite /html_escape_byte_ptr /html_escape.
-  case: (assoc c html_escape_al) => [p|] /=; last by [].
+  rewrite /html_escape_byte_ptr html_escape_cons /html_escape_byte.
+  case: (assoc c html_escape_alist) => [p|] /=; last by [].
   by rewrite cats0.
 Qed.
 
@@ -368,12 +362,13 @@ Proof.
   rewrite -{2}[s]Hs drop_size_cat; last first.
     rewrite size_takel; first by [].
     by rewrite -Hij leq_addr.
-  rewrite /= catA.
+  rewrite html_escape_cons /= catA.
   rewrite /bptradd /= addn1.
   rewrite /bufaddmem /= i_of_html_escape_byte_ptr drop0.
   rewrite /html_escape_byte_ptr.
   rewrite /html_escape_byte_len.
-  case: (assoc c html_escape_al) => [p|] /=.
+  rewrite /html_escape_byte.
+  case: (assoc c html_escape_alist) => [p|] /=.
     rewrite IH; last by rewrite addSnnS.
     congr ((buf ++ "&"%char :: _) ++ html_escape (drop i.+1 s)).
     rewrite (_ : (size p.2).+1 = (size (p.2 ++ [:: ";"%char]))).
@@ -587,7 +582,7 @@ Fixpoint sse_html_escape buf ptr n :=
           let ptr2 := bptradd ptr i in
           let c := bptrget ptr2 in
           let ptr3 := bptradd ptr2 1 in
-          let: (escptr, escn) := html_escape_byte c in
+          let: (escptr, escn) := html_escape_byte_table c in
           let buf3 := bufaddmem buf2 escptr escn in
           sse_html_escape buf3 ptr3 (n' - i)
         else
@@ -615,6 +610,7 @@ Lemma html_escape_rawchar c s :
   c \notin [:: "&"%char; "<"%char; ">"%char; """"%char; "'"%char] ->
   html_escape (c :: s) = c :: html_escape s.
 Proof.
+  rewrite html_escape_cons /html_escape_byte.
   rewrite /in_mem /= 5!negb_or /assoc /= => /andP [].
   do 4 (rewrite eq_sym => /negbTE -> /andP []).
   by rewrite eq_sym => /negbTE -> _.
@@ -738,7 +734,7 @@ Qed.
 
 Require Import Monomorph.monomorph.
 
-Terminate Monomorphization html_escape_byte.
+Terminate Monomorphization html_escape_byte_table.
 
 Terminate Monomorphization cmpestri_ubyte_eqany_ppol_lsig.
 Terminate Monomorphization need_to_escape.
@@ -749,6 +745,7 @@ Terminate Monomorphization bptrget.
 Terminate Monomorphization subn.
 Terminate Monomorphization eqn.
 Terminate Monomorphization leq.
+
 Monomorphization trec_html_escape.
 Monomorphization sse_html_escape.
 GenCFile "gen/esc.c" _trec_html_escape _sse_html_escape.

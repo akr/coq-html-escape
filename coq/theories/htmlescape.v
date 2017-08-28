@@ -500,6 +500,7 @@ Qed.
 
 Definition chars_to_escape_list := [:: "&"%char; "<"%char; ">"%char; """"%char; "'"%char].
 Definition chars_to_escape := m128_of_seq chars_to_escape_list.
+Definition num_chars_to_escape := size chars_to_escape_list.
 
 Lemma cmpestri_none a b :
   size a <= 16 -> size b <= 16 ->
@@ -578,8 +579,11 @@ Fixpoint sse_html_escape buf ptr m n :=
         trec_html_escape (bufaddmem buf ptr m) p1 n
       else
         let i := cmpestri_ubyte_eqany_ppol_lsig
-            chars_to_escape 5 (m128_of_bptr p1) 16 in
-        if i <= 15 then
+            chars_to_escape num_chars_to_escape
+            (m128_of_bptr p1) 16 in
+        if 16 <= i then
+          sse_html_escape buf ptr (m + 16) (n' - 15)
+        else
           let buf2 := bufaddmem buf ptr (m + i) in
           let p2 := bptradd ptr (m + i) in
           let c := bptrget p2 in
@@ -587,8 +591,6 @@ Fixpoint sse_html_escape buf ptr m n :=
           let: (escptr, escn) := html_escape_byte_table c in
           let buf3 := bufaddmem buf2 escptr escn in
           sse_html_escape buf3 p3 0 (n' - i)
-        else
-          sse_html_escape buf ptr (m + 16) (n' - 15)
   end.
 
 Definition sse_html_escape_stub s :=

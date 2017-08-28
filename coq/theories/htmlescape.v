@@ -762,10 +762,10 @@ Terminate Monomorphization cmpestri_ubyte_eqany_ppol_lsig.
 Terminate Monomorphization chars_to_escape.
 Terminate Monomorphization m128_of_bptr.
 Terminate Monomorphization bptradd.
-Terminate Monomorphization bufaddmem.
 Terminate Monomorphization bptrget.
+Terminate Monomorphization bufaddmem.
+Terminate Monomorphization addn.
 Terminate Monomorphization subn.
-Terminate Monomorphization eqn.
 Terminate Monomorphization leq.
 
 Monomorphization trec_html_escape.

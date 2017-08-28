@@ -498,8 +498,8 @@ Proof.
   by rewrite minnC take_minn [take 16 _]take_seq_of_m128.
 Qed.
 
-Definition need_to_escape_list := [:: "&"%char; "<"%char; ">"%char; """"%char; "'"%char].
-Definition need_to_escape := m128_of_seq need_to_escape_list.
+Definition chars_to_escape_list := [:: "&"%char; "<"%char; ">"%char; """"%char; "'"%char].
+Definition chars_to_escape := m128_of_seq chars_to_escape_list.
 
 Lemma cmpestri_none a b :
   size a <= 16 -> size b <= 16 ->
@@ -578,7 +578,7 @@ Fixpoint sse_html_escape buf ptr m n :=
         trec_html_escape (bufaddmem buf ptr m) p1 n
       else
         let i := cmpestri_ubyte_eqany_ppol_lsig
-            need_to_escape 5 (m128_of_bptr p1) 16 in
+            chars_to_escape 5 (m128_of_bptr p1) 16 in
         if i < 16 then
           let buf2 := bufaddmem buf ptr (m + i) in
           let p2 := bptradd ptr (m + i) in
@@ -608,7 +608,7 @@ Proof.
 Qed.
 
 Lemma html_escape_rawchar c s :
-  c \notin need_to_escape_list  ->
+  c \notin chars_to_escape_list  ->
   html_escape (c :: s) = c :: html_escape s.
 Proof.
   rewrite html_escape_cons /html_escape_byte.
@@ -618,7 +618,7 @@ Proof.
 Qed.
 
 Lemma html_escape_rawonly s :
-  (let p x := x \notin need_to_escape_list  in
+  (let p x := x \notin chars_to_escape_list  in
   all p s) ->
   html_escape s = s.
 Proof.
@@ -665,7 +665,7 @@ Proof.
       by rewrite ltnS leq_subr.
     rewrite /m128_of_bptr /=.
     rewrite addnC -drop_drop.
-    rewrite /need_to_escape.
+    rewrite /chars_to_escape.
     rewrite drop_drop [m + i]addnC => Hcmpestri.
     congr (buf ++ _).
     rewrite -[take (m + 16) (drop i s)](cat_take_drop m).
@@ -681,7 +681,7 @@ Proof.
     have Hds : n.+1 = size (drop (i + m) s).
       by rewrite size_drop -Himn addKn.
     have Hnotin : let p x :=
-        x \notin need_to_escape_list in
+        x \notin chars_to_escape_list in
         all p (take 16 (drop (i + m) s)).
       apply cmpestri_none.
           by [].
@@ -691,7 +691,7 @@ Proof.
         by rewrite size_takel; last rewrite -Hds.
       by apply Hcmpestri.
     by rewrite html_escape_rawonly; last apply Hnotin.
-  rewrite /need_to_escape /m128_of_bptr /=.
+  rewrite /chars_to_escape /m128_of_bptr /=.
   rewrite -[m128_of_seq (drop (i + m) s)](m128_of_seq_take 16); last by [].
   move Hcmpestri: (cmpestri_ubyte_eqany_ppol_lsig _ _ _ _) => k.
   rewrite {2}(_ : 16 = size (take 16 (drop (i + m) s))) in Hcmpestri; last first.
@@ -701,7 +701,7 @@ Proof.
   rewrite -{1}Hcmpestri.
   move=> Hk'.
   apply (cmpestri_found
-    need_to_escape_list
+    chars_to_escape_list
     (take 16 (drop (i + m) s))) in Hk'; last first.
         by [].
       by rewrite size_takel; last rewrite size_drop -Himn addKn.
@@ -758,7 +758,7 @@ Require Import Monomorph.monomorph.
 Terminate Monomorphization html_escape_byte_table.
 
 Terminate Monomorphization cmpestri_ubyte_eqany_ppol_lsig.
-Terminate Monomorphization need_to_escape.
+Terminate Monomorphization chars_to_escape.
 Terminate Monomorphization m128_of_bptr.
 Terminate Monomorphization bptradd.
 Terminate Monomorphization bufaddmem.

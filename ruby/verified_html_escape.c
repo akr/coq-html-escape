@@ -324,7 +324,7 @@ prod_byteptr_nat html_escape_byte_tbl[256] = {
 typedef __m128i m128;
 
 #define n1_m128_of_bptr(p) _mm_loadu_si128((__m128i const*)(p))
-#define n0_need_to_escape() n1_m128_of_bptr("&<>\"'\0\0\0\0\0\0\0\0\0\0\0")
+#define n0_chars_to_escape() n1_m128_of_bptr("&<>\"'\0\0\0\0\0\0\0\0\0\0\0")
 
 #define n4_cmpestri_ubyte_eqany_ppol_lsig(a, la, b, lb) \
   _mm_cmpestri(a, la, b, lb, \

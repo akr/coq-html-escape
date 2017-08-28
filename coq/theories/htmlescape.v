@@ -574,7 +574,7 @@ Fixpoint sse_html_escape buf ptr m n :=
   | 0 => bufaddmem buf ptr m
   | n'.+1 =>
       let p1 := bptradd ptr m in
-      if n < 16 then
+      if n <= 15 then
         trec_html_escape (bufaddmem buf ptr m) p1 n
       else
         let i := cmpestri_ubyte_eqany_ppol_lsig
@@ -724,8 +724,8 @@ Proof.
       congr (m + _).
       rewrite subnKC.
         by [].
-      rewrite -ltnS.
-      by apply (leq_trans Hk Hn).
+      apply: (leq_trans _ Hn).
+      by rewrite -ltnS.
     by rewrite ltnS leq_subr.
   rewrite -2!catA.
   congr (buf ++ _).
@@ -749,7 +749,8 @@ Proof.
   clear Hcmpestri Hbefore Hfound.
   rewrite (drop_nth "000"%char); last first.
     rewrite -Himn ltn_add2l.
-    by apply (leq_trans Hk Hn).
+    apply: (leq_trans _ Hn).
+    by rewrite -ltnS.
   by rewrite /= take0.
 Qed.
 

@@ -22,11 +22,7 @@ typedef uint64_t nat;
 
 #define n2_addn(a,b) ((a)+(b))
 #define n2_subn(a,b) ((a)-(b))
-#define n2_muln(a,b) ((a)*(b))
-#define n2_divn(a,b) ((a)/(b))
-#define n2_modn(a,b) ((a)%(b))
 #define n2_leq(a,b) ((a)<=(b))
-#define n2_eqn(a,b) ((a)==(b))
 
 typedef char ascii;
 
@@ -337,13 +333,10 @@ VALUE
 trec_html_escape(VALUE self, VALUE str)
 {
   buffer buf;
-
   StringValue(str);
   RB_GC_GUARD(str);
-
   buf = buffer_new(RSTRING_LEN(str));
   buf = n3_trec_html_escape(buf, RSTRING_PTR(str), RSTRING_LEN(str));
-
   return buf.str;
 }
 
@@ -351,14 +344,10 @@ VALUE
 sse_html_escape(VALUE self, VALUE str)
 {
   buffer buf;
-
   StringValue(str);
   RB_GC_GUARD(str);
-
   buf = buffer_new(RSTRING_LEN(str));
-
   n4_sse_html_escape(buf, RSTRING_PTR(str), 0, RSTRING_LEN(str));
-
   return buf.str;
 }
 

@@ -342,7 +342,7 @@ trec_html_escape(VALUE self, VALUE str)
   RB_GC_GUARD(str);
 
   buf = buffer_new(RSTRING_LEN(str));
-  buf = n3_sse_html_escape(buf, RSTRING_PTR(str), RSTRING_LEN(str));
+  buf = n3_trec_html_escape(buf, RSTRING_PTR(str), RSTRING_LEN(str));
 
   return buf.str;
 }
@@ -357,7 +357,7 @@ sse_html_escape(VALUE self, VALUE str)
 
   buf = buffer_new(RSTRING_LEN(str));
 
-  n3_sse_html_escape(buf, RSTRING_PTR(str), RSTRING_LEN(str));
+  n4_sse_html_escape(buf, RSTRING_PTR(str), 0, RSTRING_LEN(str));
 
   return buf.str;
 }

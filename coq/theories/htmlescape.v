@@ -498,7 +498,8 @@ Proof.
   by rewrite minnC take_minn [take 16 _]take_seq_of_m128.
 Qed.
 
-Definition need_to_escape := m128_of_seq [:: "&"%char; "<"%char; ">"%char; """"%char; "'"%char].
+Definition need_to_escape_list := [:: "&"%char; "<"%char; ">"%char; """"%char; "'"%char].
+Definition need_to_escape := m128_of_seq need_to_escape_list.
 
 Lemma cmpestri_none a b :
   size a <= 16 -> size b <= 16 ->
@@ -568,32 +569,32 @@ Proof.
   by apply nth_find.
 Qed.
 
-Fixpoint sse_html_escape buf ptr n :=
+Fixpoint sse_html_escape buf ptr m n :=
   match n with
-  | 0 => buf
+  | 0 => bufaddmem buf ptr m
   | n'.+1 =>
+      let p1 := bptradd ptr m in
       if n < 16 then
-        trec_html_escape buf ptr n
+        trec_html_escape (bufaddmem buf ptr m) p1 n
       else
         let i := cmpestri_ubyte_eqany_ppol_lsig
-            need_to_escape 5 (m128_of_bptr ptr) 16 in
+            need_to_escape 5 (m128_of_bptr p1) 16 in
         if i < 16 then
-          let buf2 := bufaddmem buf ptr i in
-          let ptr2 := bptradd ptr i in
-          let c := bptrget ptr2 in
-          let ptr3 := bptradd ptr2 1 in
+          let buf2 := bufaddmem buf ptr (m + i) in
+          let p2 := bptradd ptr (m + i) in
+          let c := bptrget p2 in
+          let p3 := bptradd p2 1 in
           let: (escptr, escn) := html_escape_byte_table c in
           let buf3 := bufaddmem buf2 escptr escn in
-          sse_html_escape buf3 ptr3 (n' - i)
+          sse_html_escape buf3 p3 0 (n' - i)
         else
-          sse_html_escape (bufaddmem buf ptr 16) (bptradd ptr 16) (n' - 15)
+          sse_html_escape buf ptr (m + 16) (n' - 15)
   end.
 
 Definition sse_html_escape_stub s :=
-  s_of_buf (sse_html_escape (bufctr [::]) (bptr 0 s) (size s)).
+  s_of_buf (sse_html_escape (bufctr [::]) (bptr 0 s) 0 (size s)).
 
 Require Import Wf_nat.
-About lt_wf_ind.
 
 Lemma ltn_wf_ind (n : nat) (P : nat -> Prop) :
   (forall n0 : nat, (forall m : nat, m < n0 -> P m) -> P n0) -> P n.
@@ -607,7 +608,7 @@ Proof.
 Qed.
 
 Lemma html_escape_rawchar c s :
-  c \notin [:: "&"%char; "<"%char; ">"%char; """"%char; "'"%char] ->
+  c \notin need_to_escape_list  ->
   html_escape (c :: s) = c :: html_escape s.
 Proof.
   rewrite html_escape_cons /html_escape_byte.
@@ -617,7 +618,7 @@ Proof.
 Qed.
 
 Lemma html_escape_rawonly s :
-  (let p x := x \notin [:: "&"%char; "<"%char; ">"%char; """"%char; "'"%char] in
+  (let p x := x \notin need_to_escape_list  in
   all p s) ->
   html_escape s = s.
 Proof.
@@ -634,66 +635,76 @@ Qed.
 Lemma sse_html_escape_ok s : sse_html_escape_stub s = html_escape s.
 Proof.
   rewrite /sse_html_escape_stub.
-  rewrite -[html_escape s]cat0s.
-  move: [::] => buf.
-  rewrite -{3}[s]drop0.
+  rewrite -2![html_escape s]cat0s.
+  move: {1 2}[::] => buf.
+  rewrite -{3}[s]drop0 -{3}[0]addn0.
   move: (Logic.eq_refl (size s)).
-  rewrite -{1}[size s]add0n.
-  move: 0 => i.
-  move: {1 3}(size s) => j.
-  elim/ltn_wf_ind: j i buf.
-  case => [|j] IH i buf /=.
+  rewrite -2!{1}[size s]add0n addnA.
+  rewrite (_ : [::] = (take 0 (drop 0 s))); last by rewrite take0.
+  move: {1 3 6 7}0 => i.
+  move: {1 2 3 4}0 => m.
+  move: {1 3}(size s) => n.
+  elim/ltn_wf_ind: n i m buf.
+  case => [_|n IH] i m buf /=.
     rewrite addn0 => ->.
     by rewrite drop_size cats0.
-  move=> Hij.
+  move=> Himn.
   rewrite (_ : (let '(escptr, escn) := _ in _) =
-      trec_html_escape (bufctr buf) (bptr i s) j.+1); last by [].
+      trec_html_escape
+        (bufaddmem (bufctr buf) (bptr i s) m)
+        (bptradd (bptr i s) m) n.+1); last by [].
   case: ltnP.
-    by rewrite trec_html_escape_ok1.
-  move=> Hj.
+    by rewrite trec_html_escape_ok1 /=; first rewrite catA.
+  move=> Hn.
   case: leqP.
     rewrite /bufaddmem /bptradd /=.
     rewrite IH; last first.
-        rewrite -Hij.
-        rewrite addnBA; last by rewrite -ltnS.
+        rewrite -Himn.
+        rewrite addnA addnBA; last by rewrite -ltnS.
         by rewrite addnC addnA -add1n addnA addnK addn1 addnS addnC.
       by rewrite ltnS leq_subr.
     rewrite /m128_of_bptr /=.
     rewrite addnC -drop_drop.
     rewrite /need_to_escape.
-    move=> Hcmpestri.
-    rewrite -catA.
+    rewrite drop_drop [m + i]addnC => Hcmpestri.
     congr (buf ++ _).
-    rewrite -{3}[drop i s](cat_take_drop 16).
+    rewrite -[take (m + 16) (drop i s)](cat_take_drop m).
+    rewrite take_take; last by rewrite leq_addr.
+    rewrite -catA.
+    congr (take m (drop i s) ++ _).
+    rewrite drop_take_inv drop_drop.
+    rewrite [m + i]addnC addnA.
+    rewrite -{2}[drop (i + m) s](cat_take_drop 16).
     rewrite html_escape_cat.
-    congr (_ ++ html_escape (drop 16 (drop i s))).
-    have Hds : j.+1 = size (drop i s).
-      by rewrite size_drop -Hij addKn.
+    rewrite drop_drop [16 + _]addnC.
+    congr (_ ++ html_escape (drop (i + m + 16) s)).
+    have Hds : n.+1 = size (drop (i + m) s).
+      by rewrite size_drop -Himn addKn.
     have Hnotin : let p x :=
-        x \notin [:: "&"%char; "<"%char; ">"%char; """"%char; "'"%char] in
-        all p (take 16 (drop i s)).
+        x \notin need_to_escape_list in
+        all p (take 16 (drop (i + m) s)).
       apply cmpestri_none.
           by [].
         by rewrite size_takel; last rewrite -Hds.
       rewrite m128_of_seq_take; last by [].
-      rewrite (_ : (size (take 16 (drop i s))) = 16); last first.
+      rewrite (_ : (size (take 16 (drop (i + m) s))) = 16); last first.
         by rewrite size_takel; last rewrite -Hds.
       by apply Hcmpestri.
     by rewrite html_escape_rawonly; last apply Hnotin.
   rewrite /need_to_escape /m128_of_bptr /=.
-  rewrite -[m128_of_seq (drop i s)](m128_of_seq_take 16); last by [].
+  rewrite -[m128_of_seq (drop (i + m) s)](m128_of_seq_take 16); last by [].
   move Hcmpestri: (cmpestri_ubyte_eqany_ppol_lsig _ _ _ _) => k.
-  rewrite {2}(_ : 16 = size (take 16 (drop i s))) in Hcmpestri; last first.
-    by rewrite size_takel; last rewrite size_drop -Hij addKn.
+  rewrite {2}(_ : 16 = size (take 16 (drop (i + m) s))) in Hcmpestri; last first.
+    by rewrite size_takel; last rewrite size_drop -Himn addKn.
   move=> Hk.
   have : k < 16; first by [].
   rewrite -{1}Hcmpestri.
   move=> Hk'.
   apply (cmpestri_found
-    [:: "&"%char; "<"%char; ">"%char; """"%char; "'"%char]
-    (take 16 (drop i s))) in Hk'; last first.
+    need_to_escape_list
+    (take 16 (drop (i + m) s))) in Hk'; last first.
         by [].
-      by rewrite size_takel; last rewrite size_drop -Hij addKn.
+      by rewrite size_takel; last rewrite size_drop -Himn addKn.
     by [].
   rewrite Hcmpestri in Hk'.
   case: Hk' => Hbefore.
@@ -704,21 +715,31 @@ Proof.
   rewrite i_of_html_escape_byte_ptr drop0.
   rewrite take_html_escape_byte_len_ptr.
   rewrite IH; last first.
-      rewrite addnAC.
-      rewrite [i + k]addnC.
-      rewrite [k + i + (j - k)]addnAC.
+      rewrite addn0.
+      rewrite addnAC -Himn addn1 addnS.
+      congr (_.+1).
+      rewrite -2![i + _ + _]addnA.
+      congr (i + _).
+      rewrite -[m + _ + _]addnA.
+      congr (m + _).
       rewrite subnKC.
-        by rewrite -Hij addn1 addnS addnC.
+        by [].
       rewrite -ltnS.
-      by apply (leq_trans Hk Hj).
+      by apply (leq_trans Hk Hn).
     by rewrite ltnS leq_subr.
   rewrite -2!catA.
-  rewrite -{2}[drop i s](cat_take_drop k).
-  rewrite drop_drop [k + i]addnC.
-  rewrite -[drop (i + k) s](cat_take_drop 1).
-  rewrite drop_drop [1 + (i + k)]addnC.
+  congr (buf ++ _).
+  rewrite take0 cat0s addn0 addnA.
+  rewrite -{1}[take (m + k) (drop i s)](cat_take_drop m) -catA.
+  rewrite take_take; last by rewrite leq_addr.
+  rewrite drop_take_inv drop_drop [m + i]addnC.
+  congr (take m (drop i s) ++ _).
+  rewrite -{2}[drop (i + m) s](cat_take_drop k).
+  rewrite drop_drop [k + (i + m)]addnC.
+  rewrite -[drop (i + m + k) s](cat_take_drop 1).
+  rewrite drop_drop [1 + (i + m + k)]addnC.
   rewrite 2!html_escape_cat.
-  congr (buf ++ _ ++ _ ++ _).
+  congr (_ ++ _ ++ _).
     rewrite html_escape_rawonly; first by [].
     rewrite take_take in Hbefore.
       by apply Hbefore.
@@ -727,8 +748,8 @@ Proof.
   congr (html_escape _).
   clear Hcmpestri Hbefore Hfound.
   rewrite (drop_nth "000"%char); last first.
-    rewrite -Hij ltn_add2l.
-    by apply (leq_trans Hk Hj).
+    rewrite -Himn ltn_add2l.
+    by apply (leq_trans Hk Hn).
   by rewrite /= take0.
 Qed.
 

@@ -634,18 +634,10 @@ Proof.
   by move: H => /= /andP [] _ ->.
 Qed.
 
-Lemma sse_html_escape_ok s : sse_html_escape_stub s = html_escape s.
+Lemma sse_html_escape_ok1 s buf i m n : i + m + n = size s ->
+  s_of_buf (sse_html_escape (bufctr buf) (bptr i s) m n) =
+  buf ++ take m (drop i s) ++ html_escape (drop (i + m) s).
 Proof.
-  rewrite /sse_html_escape_stub.
-  rewrite -2![html_escape s]cat0s.
-  move: {1 2}[::] => buf.
-  rewrite -{3}[s]drop0 -{3}[0]addn0.
-  move: (Logic.eq_refl (size s)).
-  rewrite -2!{1}[size s]add0n addnA.
-  rewrite (_ : [::] = (take 0 (drop 0 s))); last by rewrite take0.
-  move: {1 3 6 7}0 => i.
-  move: {1 2 3 4}0 => m.
-  move: {1 3}(size s) => n.
   elim/ltn_wf_ind: n i m buf.
   case => [_|n IH] i m buf /=.
     rewrite addn0 => ->.
@@ -754,6 +746,12 @@ Proof.
     apply: (leq_trans _ Hn).
     by rewrite -ltnS.
   by rewrite /= take0.
+Qed.
+
+Lemma sse_html_escape_ok s : sse_html_escape_stub s = html_escape s.
+Proof.
+  rewrite /sse_html_escape_stub.
+  by rewrite sse_html_escape_ok1; first rewrite take0 drop0.
 Qed.
 
 Require Import Monomorph.monomorph.

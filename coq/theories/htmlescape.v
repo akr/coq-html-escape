@@ -579,7 +579,7 @@ Fixpoint sse_html_escape buf ptr m n :=
       else
         let i := cmpestri_ubyte_eqany_ppol_lsig
             chars_to_escape 5 (m128_of_bptr p1) 16 in
-        if i < 16 then
+        if i <= 15 then
           let buf2 := bufaddmem buf ptr (m + i) in
           let p2 := bptradd ptr (m + i) in
           let c := bptrget p2 in
@@ -656,7 +656,7 @@ Proof.
   case: ltnP.
     by rewrite trec_html_escape_ok1 /=; first rewrite catA.
   move=> Hn.
-  case: leqP.
+  case: leqP; last first.
     rewrite /bufaddmem /bptradd /=.
     rewrite IH; last first.
         rewrite -Himn.

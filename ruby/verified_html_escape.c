@@ -24,7 +24,7 @@ typedef uint64_t nat;
 #define n2_subn(a,b) ((a)-(b))
 #define n2_leq(a,b) ((a)<=(b))
 
-typedef char ascii;
+typedef unsigned char ascii;
 
 typedef const char *byteptr;
 #define n1_bptrget(p) (*(unsigned char *)p)

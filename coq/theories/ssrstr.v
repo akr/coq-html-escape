@@ -5,8 +5,8 @@ Require Import Ascii.
 Require Import htmlescape.listutils.
 Require Import htmlescape.assoc.
 
-Local Open Scope string_scope. (* enable "string-literal" and str ++ str *)
-Local Open Scope seq_scope. (* prefer seq ++ seq over str ++ str *)
+Open Scope string_scope. (* enable "string-literal" and str ++ str *)
+Open Scope seq_scope. (* prefer seq ++ seq over str ++ str *)
 
 Definition eqascii a b :=
   let: Ascii a1 a2 a3 a4 a5 a6 a7 a8 := a in

@@ -1,0 +1,73 @@
+require 'tempfile'
+
+def escape_R(str)
+  '"' + str.gsub(/[^A-Za-z]/) {|c| sprintf("\\%03o", c.ord) } + '"'
+end
+
+def escape_sh(str)
+  "'" + str.gsub(/'/) { "'\\''" } + "'"
+end
+
+def run_R(basename, code)
+  Tempfile.create(["plot-#{basename}", ".R"]) {|tmp|
+    tmp << code
+    tmp.flush
+    sh "R --slave --vanilla < #{escape_sh tmp.path}"
+  }
+end
+
+def gen_R(dev, filename, code)
+  run_R(dev, "#{dev}(#{escape_R filename}, width=8, height=5)\n#{code}")
+end
+
+RATIO_SLOPE_SMOOTH = <<'End'
+library(ggplot2)
+d <- read.csv("result.csv")
+d$k <- d$time.s. / d$size.byte.
+ggplot(d, aes(esc_ratio, k, color=method)) +
+  geom_smooth() +
+  scale_x_continuous("escape character ratio") +
+  scale_y_continuous("time / size [s/byte]", limits = c(0, 3e-8)) +
+  theme(
+    legend.justification=c(1,0),
+    legend.position=c(0.99,0.02),
+    text = element_text(size=25))
+End
+
+RATIO_SLOPE_POINT = <<'End'
+library(ggplot2)
+d <- read.csv("result.csv")
+d$k <- d$time.s. / d$size.byte.
+ggplot(d, aes(esc_ratio, k, color=method)) +
+  geom_point(size=0.1) +
+  scale_x_continuous("escape character ratio") +
+  scale_y_continuous("time / size [s/byte]", limits = c(0, 3e-8)) +
+  theme(
+    legend.justification=c(1,0),
+    legend.position=c(1,0),
+    text = element_text(size=25))
+End
+
+SIZE_TIME = <<'End'
+library(ggplot2)
+d <- read.csv("result.csv")
+d$k <- d$time.s. / d$size.byte.
+ggplot(d, aes(size.byte., time.s., color=esc_ratio, shape=method)) +
+  geom_point(size=0.1) +
+  scale_x_continuous("size[byte]") +
+  scale_y_continuous("time[s]")
+End
+
+%w[pdf svg].each do |dev|
+  {
+    "ratio-slope-smooth" => RATIO_SLOPE_SMOOTH,
+    "ratio-slope-point" => RATIO_SLOPE_POINT,
+    "size-time" => SIZE_TIME,
+  }.each {|basename, code|
+    filename = "#{basename}.#{dev}"
+    file filename do |t|
+      gen_R(dev, t.name, code)
+    end
+    task :default => filename
+  }
+end

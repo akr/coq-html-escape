@@ -70,7 +70,7 @@ Monadify Action bufaddmem => bufaddmemM.
 Monadify Pure html_escape_byte_table.
 
 Monadification trec_html_escape.
-Print trec_html_escapeM.
+(*Print trec_html_escapeM.*)
 
 Lemma i_of_html_escape_byte_ptr c : i_of_bptr (html_escape_byte_ptr c) = 0.
 Proof.
@@ -116,8 +116,14 @@ Qed.
 
 Monadify Pure nat_eqMixin.
 
+(* subn must be pure because it is used for decreasing argument *)
+Monadify Pure subn.
+
+(* This monadic action makes Coq hang
 Definition subM a b := if a >= b then Some (a - b) else None.
 Monadify Action subn => subM.
+*)
+
 Monadify Pure leq.
 
 Definition cmpestri_ubyte_eqany_ppol_lsigM a la b lb :=
@@ -139,6 +145,119 @@ Definition m128_of_bptrM ptr :=
 Monadify Action m128_of_bptr => m128_of_bptrM.
 
 Monadification sse_html_escape. (* coqc hang *)
-Print sse_html_escapeM.
+(*Print sse_html_escapeM.*)
+
+Lemma cmpestri_ubyte_eqany_ppol_lsig_bound a la b lb :
+  cmpestri_ubyte_eqany_ppol_lsig a la b lb <= 16.
+Proof.
+  rewrite /cmpestri_ubyte_eqany_ppol_lsig.
+  case: ifP => [_|]; last by [].
+  apply: (@leq_trans (size (take lb (seq_of_m128 b)))).
+    by apply find_size.
+  rewrite size_take size_seq_of_m128.
+  by case: ltnP; first move/ltnW.
+Qed.
+
+Lemma sse_html_escape_success i s m n buf ptr :
+  ptr = bptr i s ->
+  i + m + n <= size s -> log2 (size s) < W ->
+  sse_html_escapeM buf ptr m n = Some (sse_html_escape buf ptr m n).
+Proof.
+  move=> ->.
+  clear ptr.
+  elim/ltn_wf_ind: n i m buf.
+  case => /=.
+    move=> IH i m buf.
+    rewrite addn0 => Him Hs.
+    by rewrite /bufaddmemM /= Him.
+  move=> n IH i m buf Himn Hs.
+  rewrite /bptraddM /bptrgetM /bufaddmemM /m128_of_bptrM /=.
+  have Him : i + m <= size s.
+    apply: (leq_trans _ Himn).
+    by apply leq_addr.
+  have Him' : i + m < size s.
+    apply: (leq_trans _ Himn).
+    rewrite addnS.
+    by apply leq_addr.
+  rewrite Him /=.
+  case: ltnP.
+    move=> Hn.
+    rewrite Him' /=.
+    rewrite html_escape_byte_split.
+    rewrite i_of_html_escape_byte_ptr add0n.
+    rewrite size_s_of_html_escape_byte_ptr leqnn /=.
+    rewrite addn1 Him' /=.
+    apply (trec_html_escape_success (i + m + 1) s).
+        by rewrite /bptradd.
+      by rewrite addn1 addSnnS.
+    by [].
+  move=> Hn.
+  rewrite (_ : i + m + 16 <= size s) /=; last first.
+    apply: (leq_trans _ Himn).
+    by rewrite leq_add2l ltnS.
+  rewrite {1}/addM /check.
+  rewrite (_ : log2 (m + 16) < W) /=; last first.
+    apply: (leq_ltn_trans _ Hs).
+    apply log2_le_mono.
+    apply: (leq_trans _ Himn).
+    apply leq_add.
+      by apply leq_addl.
+    by rewrite ltnS.
+  case: ltnP => Hcmp.
+    rewrite IH.
+          by [].
+        by rewrite ltnS leq_subr.
+      apply: (leq_trans _ Himn).
+      rewrite -2![i + _ + _]addnA.
+      rewrite leq_add2l.
+      rewrite -[m + _ + _]addnA.
+      rewrite leq_add2l.
+      rewrite addSn ltnS.
+      by rewrite subnKC; first apply leqnn.
+    by [].
+  rewrite /addM /check.
+  rewrite (_ : log2 _ < W) /=; last first.
+    apply: (leq_ltn_trans _ Hs).
+    apply log2_le_mono.
+    apply: (leq_trans _ Himn).
+    apply leq_add.
+      by apply leq_addl.
+    apply: (@leq_trans 16).
+      by apply cmpestri_ubyte_eqany_ppol_lsig_bound.
+    by rewrite ltnS.
+  rewrite (_ : i + (m + _) <= size s) /=; last first.
+    apply: (leq_trans _ Himn).
+    rewrite addnA.
+    apply leq_add.
+      by apply leqnn.
+    apply: (@leq_trans 16).
+      by apply cmpestri_ubyte_eqany_ppol_lsig_bound.
+    by rewrite ltnS.
+  rewrite addn1.
+  rewrite (_ : i + (m + _) < size s) /=; last first.
+    apply: (leq_trans _ Himn).
+    rewrite addnA.
+    rewrite -addnS.
+    apply leq_add.
+      by apply leqnn.
+    rewrite ltnS.
+    by apply: (@leq_trans 15); first apply Hcmp.
+  rewrite html_escape_byte_split.
+  rewrite i_of_html_escape_byte_ptr add0n.
+  rewrite size_s_of_html_escape_byte_ptr leqnn /=.
+  apply IH.
+      by rewrite ltnS leq_subr.
+    rewrite /= addn0.
+    apply: (leq_trans _ Himn).
+    rewrite addn1 addSn addnS ltnS.
+    rewrite -2![i + _ + _]addnA.
+    rewrite leq_add2l.
+    rewrite -[m + _ + _]addnA.
+    rewrite leq_add2l.
+    rewrite subnKC; first by apply leqnn.
+    by apply: (@leq_trans 15).
+  by [].
+Qed.
+
 
 

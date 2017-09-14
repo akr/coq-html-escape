@@ -1,4 +1,5 @@
 -Q theories htmlescape
+theories/natutils.v
 theories/listutils.v
 theories/assoc.v
 theories/ssrstr.v
@@ -6,3 +7,4 @@ theories/spec.v
 theories/imp.v
 theories/htmlescape.v
 theories/gen.v
+theories/success.v

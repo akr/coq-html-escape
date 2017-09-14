@@ -258,6 +258,3 @@ Proof.
     by apply: (@leq_trans 15).
   by [].
 Qed.
-
-
-

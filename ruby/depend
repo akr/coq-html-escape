@@ -1,14 +1,5 @@
-bench : benchmark/smooth.svg benchmark/size-time.pdf benchmark/ratio-slope.pdf
+bench : benchmark/result.csv
 
 benchmark/result.csv: benchmark/bench.rb
 	$(RUBY) -I. benchmark/bench.rb > $@+
 	mv $@+ $@
-
-benchmark/smooth.svg: benchmark/smooth.R benchmark/result.csv
-	R --slave --vanilla < benchmark/smooth.R
-
-benchmark/size-time.pdf: benchmark/size-time-pdf.R benchmark/result.csv
-	R --slave --vanilla < benchmark/size-time-pdf.R
-
-benchmark/ratio-slope.pdf: benchmark/ratio-slope-pdf.R benchmark/result.csv
-	R --slave --vanilla < benchmark/ratio-slope-pdf.R

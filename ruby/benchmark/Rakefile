@@ -16,8 +16,8 @@ def run_R(basename, code)
   }
 end
 
-def gen_R(dev, filename, code)
-  run_R(dev, "#{dev}(#{escape_R filename}, width=8, height=5)\n#{code}")
+def gen_R(dev, param, filename, code)
+  run_R(dev, "#{dev}(#{escape_R filename}#{param})\n#{code}")
 end
 
 RATIO_SLOPE_SMOOTH = <<'End'
@@ -58,7 +58,14 @@ ggplot(d, aes(size.byte., time.s., color=esc_ratio, shape=method)) +
   scale_y_continuous("time[s]")
 End
 
-%w[pdf svg].each do |dev|
+dev_params = {
+  'pdf' => ", width=8, height=5",
+  'svg' => ", width=8, height=5",
+  'png' => ", width=800, height=600",
+}
+
+%w[pdf svg png].each do |dev|
+  param = dev_params[dev]
   {
     "ratio-slope-smooth" => RATIO_SLOPE_SMOOTH,
     "ratio-slope-point" => RATIO_SLOPE_POINT,
@@ -66,7 +73,7 @@ End
   }.each {|basename, code|
     filename = "#{basename}.#{dev}"
     file filename do |t|
-      gen_R(dev, t.name, code)
+      gen_R(dev, param, t.name, code)
     end
     task :default => filename
   }

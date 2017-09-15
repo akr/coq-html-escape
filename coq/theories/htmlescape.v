@@ -35,7 +35,7 @@ Proof.
   by [].
 Qed.
 
-Lemma html_unescape_ok raw escaped :
+Lemma html_unescape_correct raw escaped :
   text_spec raw escaped -> html_unescape escaped = raw.
 Proof.
   elim/text_spec_ind.
@@ -91,7 +91,7 @@ Proof.
   by rewrite /decode_hex /decode_hex_prefix Hsz => [] [].
 Qed.
 
-Lemma html_escape_ok raw escaped :
+Lemma html_escape_correct raw escaped :
   html_escape raw = escaped -> text_spec raw escaped.
 Proof.
   elim: raw escaped.
@@ -166,7 +166,7 @@ Proof.
   by rewrite cats0.
 Qed.
 
-Lemma trec_html_escape_ok1 s buf i j :
+Lemma trec_html_escape_correct1 s buf i j :
   i + j = size s ->
   s_of_buf (trec_html_escape (bufctr buf) (bptr i s) j) =
   buf ++ html_escape (drop i s).
@@ -204,10 +204,10 @@ Proof.
   by rewrite IH; last by rewrite addSnnS.
 Qed.
 
-Lemma trec_html_escape_ok s : trec_html_escape_stub s = html_escape s.
+Lemma trec_html_escape_correct s : trec_html_escape_stub s = html_escape s.
 Proof.
   rewrite /trec_html_escape_stub.
-  by rewrite trec_html_escape_ok1; first rewrite drop0.
+  by rewrite trec_html_escape_correct1; first rewrite drop0.
 Qed.
 
 Lemma m128_of_seq_of_m128 m : m128_of_seq (seq_of_m128 m) = m.
@@ -404,7 +404,7 @@ Proof.
   by move: H => /= /andP [] _ ->.
 Qed.
 
-Lemma sse_html_escape_ok1 s buf i m n : i + m + n = size s ->
+Lemma sse_html_escape_correct1 s buf i m n : i + m + n = size s ->
   s_of_buf (sse_html_escape (bufctr buf) (bptr i s) m n) =
   buf ++ take m (drop i s) ++ html_escape (drop (i + m) s).
 Proof.
@@ -418,7 +418,7 @@ Proof.
         (bufaddmem (bufctr buf) (bptr i s) m)
         (bptradd (bptr i s) m) n.+1); last by [].
   case: ltnP.
-    by rewrite trec_html_escape_ok1 /=; first rewrite catA.
+    by rewrite trec_html_escape_correct1 /=; first rewrite catA.
   move=> Hn.
   case: leqP; last first.
     rewrite /bufaddmem /bptradd /=.
@@ -518,8 +518,8 @@ Proof.
   by rewrite /= take0.
 Qed.
 
-Lemma sse_html_escape_ok s : sse_html_escape_stub s = html_escape s.
+Lemma sse_html_escape_correct s : sse_html_escape_stub s = html_escape s.
 Proof.
   rewrite /sse_html_escape_stub.
-  by rewrite sse_html_escape_ok1; first rewrite take0 drop0.
+  by rewrite sse_html_escape_correct1; first rewrite take0 drop0.
 Qed.

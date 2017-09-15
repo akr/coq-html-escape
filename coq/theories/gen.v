@@ -8,7 +8,7 @@ Require Import htmlescape.ssrstr.
 Require Import htmlescape.spec.
 Require Import htmlescape.imp.
 
-Require Import Monomorph.monomorph.
+Require Import codegen.codegen.
 
 Terminate Monomorphization html_escape_byte_table.
 Terminate Monomorphization cmpestri_ubyte_eqany_ppol_lsig.

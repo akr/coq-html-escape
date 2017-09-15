@@ -9,7 +9,7 @@ Require Import htmlescape.ssrstr.
 Require Import htmlescape.imp.
 Require Import htmlescape.htmlescape.
 
-Require Import Monadification.monadification.
+Require Import monadification.monadification.
 
 Definition ret {A} (x : A) := Some x.
 Definition bind {A} {B} (x' : option A) (f : A -> option B) :=

@@ -29,7 +29,9 @@ HTML escape function using SSE verified by Coq.
 
 ## Link
 
-https://github.com/akr/coq-html-escape
+- https://github.com/akr/coq-html-escape This project
+- https://github.com/akr/monadification monadification plugin
+- https://github.com/akr/codegen codegen plugin
 
 ## Author
 

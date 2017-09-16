@@ -3,7 +3,8 @@
 Supplement material for the presentation at RubyKaigi 2017:
 Ruby Extension Library Verified using Coq Proof-assistant,
 Tanaka Akira,
-2017-09-20
+2017-09-20,
+http://rubykaigi.org/2017/presentations/tanaka_akr.html
 
 This project contains a Ruby extention library for
 HTML escape function using SSE verified by Coq.

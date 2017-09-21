@@ -7,7 +7,7 @@ Require Import htmlescape.listutils.
 Require Import htmlescape.assoc.
 Require Import htmlescape.ssrstr.
 Require Import htmlescape.imp.
-Require Import htmlescape.htmlescape.
+Require Import htmlescape.correct.
 
 Require Import monadification.monadification.
 

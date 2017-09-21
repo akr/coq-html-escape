@@ -5,6 +5,6 @@ theories/assoc.v
 theories/ssrstr.v
 theories/spec.v
 theories/imp.v
-theories/htmlescape.v
-theories/gen.v
+theories/correct.v
 theories/success.v
+theories/gen.v

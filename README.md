@@ -11,6 +11,7 @@ HTML escape function using SSE verified by Coq.
 
 ## Directory Structure
 
+- slide/2017-09-20-akr-rubykaigi.pdf : slide for RubyKaigi 2017
 - coq/theories/natutils.v : utilities for nat
 - coq/theories/listutils. : utilities for list (seq)
 - coq/theories/assoc.v : assoc function

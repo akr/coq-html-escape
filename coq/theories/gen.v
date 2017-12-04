@@ -21,6 +21,16 @@ Terminate Monomorphization addn.
 Terminate Monomorphization subn.
 Terminate Monomorphization leq.
 
+Terminate Monomorphization cmpestrc_ubyte_eqany_ppol_lsig_bitmask.
+Terminate Monomorphization cmpestrm_ubyte_eqany_ppol_lsig_bitmask.
+Terminate Monomorphization lo64_of_m128.
+
 Monomorphization trec_html_escape.
 Monomorphization sse_html_escape.
-GenCFile "gen/esc.c" _trec_html_escape _sse_html_escape.
+Monomorphization sse_html_escape2.
+
+GenCFile "gen/esc.c"
+  _trec_html_escape _sse_html_escape
+  _sse_html_escape2_dense
+  _sse_html_escape2_aligned
+  _sse_html_escape2.

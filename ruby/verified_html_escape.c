@@ -22,13 +22,19 @@ typedef uint64_t nat;
 
 #define n2_addn(a,b) ((a)+(b))
 #define n2_subn(a,b) ((a)-(b))
+#define n2_muln(a,b) ((a)*(b))
+#define n2_divn(a,b) ((a)/(b))
+#define n2_modn(a,b) ((a)%(b))
 #define n2_leq(a,b) ((a)<=(b))
+#define n1_half(a) ((a)/2)
 
 typedef unsigned char ascii;
 
 typedef const char *byteptr;
 #define n1_bptrget(p) (*(unsigned char *)p)
 #define n2_bptradd(p, n) (p + n)
+
+#define n2_align_of_bptr(n, p) ((nat)((uintptr_t)(p) % (n)))
 
 typedef struct {
   VALUE str;
@@ -320,13 +326,28 @@ prod_byteptr_nat html_escape_byte_tbl[256] = {
 typedef __m128i m128;
 
 #define n1_m128_of_bptr(p) _mm_loadu_si128((__m128i const*)(p))
+#define n1_m128_firstbyte(v) (_mm_cvtsi128_si64(v) & 0xff)
+#define n1_m128_restbytes(v) _mm_bsrli_si128(v, 1)
+
 #define n0_chars_to_escape() n1_m128_of_bptr("&<>\"'\0\0\0\0\0\0\0\0\0\0\0")
 #define n0_num_chars_to_escape() 5
+
+#define n1_lo64_of_m128(v) _mm_cvtsi128_si64(v)
 
 #define n4_cmpestri_ubyte_eqany_ppol_lsig(a, la, b, lb) \
   _mm_cmpestri(a, la, b, lb, \
       _SIDD_UBYTE_OPS|_SIDD_CMP_EQUAL_ANY| \
       _SIDD_POSITIVE_POLARITY|_SIDD_LEAST_SIGNIFICANT)
+
+#define n4_cmpestrm_ubyte_eqany_ppol_lsig_bitmask(a, la, b, lb) \
+  _mm_cmpestrm(a, la, b, lb, \
+      _SIDD_UBYTE_OPS|_SIDD_CMP_EQUAL_ANY| \
+      _SIDD_POSITIVE_POLARITY|_SIDD_LEAST_SIGNIFICANT|_SIDD_BIT_MASK)
+
+#define n4_cmpestrc_ubyte_eqany_ppol_lsig_bitmask(a, la, b, lb) \
+  _mm_cmpestrc(a, la, b, lb, \
+      _SIDD_UBYTE_OPS|_SIDD_CMP_EQUAL_ANY| \
+      _SIDD_POSITIVE_POLARITY|_SIDD_LEAST_SIGNIFICANT|_SIDD_BIT_MASK)
 
 #include "../coq/gen/esc.c"
 
@@ -352,9 +373,21 @@ sse_html_escape(VALUE self, VALUE str)
   return buf.str;
 }
 
+VALUE
+sse_html_escape2(VALUE self, VALUE str)
+{
+  buffer buf;
+  StringValue(str);
+  RB_GC_GUARD(str);
+  buf = buffer_new(RSTRING_LEN(str));
+  n3_sse_html_escape2(buf, RSTRING_PTR(str), RSTRING_LEN(str));
+  return buf.str;
+}
+
 void
 Init_verified_html_escape()
 {
   rb_define_global_function("trec_html_escape", trec_html_escape, 1);
   rb_define_global_function("sse_html_escape", sse_html_escape, 1);
+  rb_define_global_function("sse_html_escape2", sse_html_escape2, 1);
 }

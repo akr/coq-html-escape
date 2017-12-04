@@ -85,6 +85,8 @@ Proof.
   by case: (assoc c html_escape_alist) => [p /=|]; first rewrite size_cat /= addn1.
 Qed.
 
+(*
+
 Lemma trec_html_escape_success i s n buf ptr :
   ptr = bptr i s ->
   i + n <= size s -> log2 (size s) < W ->
@@ -258,3 +260,4 @@ Proof.
     by apply: (@leq_trans 15).
   by [].
 Qed.
+*)

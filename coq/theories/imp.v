@@ -80,35 +80,41 @@ Fixpoint html_unescape s :=
   end.
 
 (* pointer to byte (unsigned char).
-  "cptr i lst" represents a pointer to i'th char in lst.
+  "bptr addr i lst" represents a pointer to i'th char in lst.
+  addr is the machine address of the first element.
+  addr is used only for alignment calclation.
   restriction: 0 <= i <= size lst.
   Although a pointer with i = size lst is valid, its dereference is invalid.
 *)
-Inductive byteptr := bptr : nat -> seq ascii -> byteptr.
+Inductive byteptr := bptr : nat -> nat -> seq ascii -> byteptr.
 
 (* accessors for Coq proof *)
-Definition i_of_bptr ptr := let: bptr i s := ptr in i.
-Definition s_of_bptr ptr := let: bptr i s := ptr in s.
+Definition i_of_bptr ptr := let: bptr addr i s := ptr in i.
+Definition s_of_bptr ptr := let: bptr addr i s := ptr in s.
+Definition addr_of_bptr ptr := let: bptr addr i s := ptr in addr.
+Definition align_of_bptr n ptr := (addr_of_bptr ptr) %% n.
+
+Lemma let_bptr_destruct T (B : nat -> nat -> seq ascii -> T) ptr :
+  (let: bptr addr i s := ptr in B addr i s) =
+  B (addr_of_bptr ptr) (i_of_bptr ptr) (s_of_bptr ptr).
+Proof. by case: ptr. Qed.
 
 (* precondition: i + n <= size s
   C: p + n *)
 Definition bptradd ptr n :=
-  let i := i_of_bptr ptr in
-  let s := s_of_bptr ptr in
-  bptr (i + n) s.
+  let: bptr addr i s := ptr in
+  bptr addr (i + n) s.
 
 (* precondition: n <= i
   C: p - n *)
 Definition bptrsub ptr n :=
-  let i := i_of_bptr ptr in
-  let s := s_of_bptr ptr in
-  bptr (i - n) s.
+  let: bptr addr i s := ptr in
+  bptr addr (i - n) s.
 
 (* precondition: i < size s
   C: *p *)
 Definition bptrget ptr :=
-  let i := i_of_bptr ptr in
-  let s := s_of_bptr ptr in
+  let: bptr addr i s := ptr in
   nth "000"%char s i.
 
 (* buffer implemented using Ruby String.
@@ -123,27 +129,32 @@ Inductive buffer := bufctr of seq ascii.
 (* accessor for Coq proof *)
 Definition s_of_buf buf := let: bufctr s := buf in s.
 
+Lemma let_buffer_destruct T (B : seq ascii -> T) buf :
+  (let: bufctr s := buf in B s) =
+  B (s_of_buf buf).
+Proof. by case: buf. Qed.
+
 (* (struct rbuf){ len + 1, rb_str_buf_cat(str, &b, 1) } *)
 Definition bufaddbyte buf b :=
-  let s := s_of_buf buf in
+  let: bufctr s := buf in
   bufctr (rcons s b).
 
 (* precondition: i + n <= size s'
   (struct rbuf){ len + n, rb_str_buf_cat(str, ptr, n) }
  *)
 Definition bufaddmem buf ptr n :=
-  let s := s_of_buf buf in
-  let i := i_of_bptr ptr in
-  let s' := s_of_bptr ptr in
+  let: bufctr s := buf in
+  let: bptr addr i s' := ptr in
   bufctr (s ++ take n (drop i s')).
 
 (* This function will be implemented as a table in C *)
+(* The addresses of strings are 0 which means they are aligned for all purpose. *)
 Definition html_escape_byte_table c :=
   if assoc c html_escape_alist is Some p then
     let s := "&" ++ p.2 ++ ";" in
-    (bptr 0 s, size s)
+    (bptr 0 0 s, size s)
   else
-    (bptr 0 [:: c], 1).
+    (bptr 0 0 [:: c], 1).
 
 Fixpoint trec_html_escape buf ptr n :=
   match n with
@@ -156,8 +167,8 @@ Fixpoint trec_html_escape buf ptr n :=
         n'
   end.
 
-Definition trec_html_escape_stub s :=
-  s_of_buf (trec_html_escape (bufctr [::]) (bptr 0 s) (size s)).
+Definition trec_html_escape_stub addr s :=
+  s_of_buf (trec_html_escape (bufctr [::]) (bptr addr 0 s) (size s)).
 
 Inductive m128 := c128 :
   ascii -> ascii -> ascii -> ascii ->
@@ -213,5 +224,117 @@ Fixpoint sse_html_escape buf ptr m n :=
           sse_html_escape buf3 p3 0 (n' - i)
   end.
 
-Definition sse_html_escape_stub s :=
-  s_of_buf (sse_html_escape (bufctr [::]) (bptr 0 s) 0 (size s)).
+Definition sse_html_escape_stub addr s :=
+  s_of_buf (sse_html_escape (bufctr [::]) (bptr addr 0 s) 0 (size s)).
+
+(* convert first 8 bit *)
+Definition ascii_of_bits s :=
+  Ascii (nth false s 0) (nth false s 1) (nth false s 2) (nth false s 3)
+        (nth false s 4) (nth false s 5) (nth false s 6) (nth false s 7).
+
+Definition bits_of_ascii c :=
+  let: Ascii b0 b1 b2 b3 b4 b5 b6 b7 := c in
+  [:: b0; b1; b2; b3; b4; b5; b6; b7].
+
+(*
+Lemma ascii_of_bits_of_ascii c : ascii_of_bits (bits_of_ascii c) = c.
+Proof. by case: c. Qed.
+
+Lemma bits_of_ascii_of_bits s := *)
+
+Definition m128_of_bits s :=
+  m128_of_seq (map ascii_of_bits (reshape (nseq 16 8) s)).
+
+Definition bits_of_m128 m :=
+  flatten (map bits_of_ascii (seq_of_m128 m)).
+
+(* _mm_cmpestrm(a, la, b, lb,
+     _SIDD_UBYTE_OPS|_SIDD_CMP_EQUAL_ANY|
+     _SIDD_POSITIVE_POLARITY|_SIDD_LEAST_SIGNIFICANT|_SIDD_BIT_MASK) *)
+Definition cmpestrm_ubyte_eqany_ppol_lsig_bitmask
+  (a : m128) (la : nat) (b : m128) (lb : nat) : m128 :=
+  let sa := take la (seq_of_m128 a) in
+  let sb := take lb (seq_of_m128 b) in
+  let p := mem sa in
+  let bits := map p sb in
+  m128_of_bits bits.
+
+(* _mm_cmpestrc(a, la, b, lb,
+     _SIDD_UBYTE_OPS|_SIDD_CMP_EQUAL_ANY|
+     _SIDD_POSITIVE_POLARITY|_SIDD_LEAST_SIGNIFICANT|_SIDD_BIT_MASK) *)
+Definition cmpestrc_ubyte_eqany_ppol_lsig_bitmask
+  (a : m128) (la : nat) (b : m128) (lb : nat) : bool :=
+  let sa := take la (seq_of_m128 a) in
+  let sb := take lb (seq_of_m128 b) in
+  let p := mem sa in
+  has p sb.
+
+Fixpoint nat_of_bits (s : seq bool) :=
+  match s with
+  | [::] => 0
+  | b :: s' => b + 2 * (nat_of_bits s')
+  end.
+
+Fixpoint lobits_of_nat m n :=
+  match m with
+  | 0 => [::]
+  | m'.+1 => (odd n) :: (lobits_of_nat m' n./2)
+  end.
+
+(* _mm_cvtsi128_si64(a) *)
+Definition lo64_of_m128 (a : m128) : nat :=
+  nat_of_bits (take 64 (bits_of_m128 a)).
+
+(* _mm_cvtsi128_si64(a) & 0xff *)
+Definition m128_firstbyte m :=
+  let: c128 b0 b1 b2 b3 b4 b5 b6 b7 b8 b9 ba bb bc bd be bf := m in
+  b0.
+
+(* _mm_bsrli_si128(a, 1) *)
+Definition m128_restbytes m :=
+  let: c128 b0 b1 b2 b3 b4 b5 b6 b7 b8 b9 ba bb bc bd be bf := m in
+  c128 b1 b2 b3 b4 b5 b6 b7 b8 b9 ba bb bc bd be bf "000"%char.
+
+Definition popcount64 (n : nat) :=
+  count_mem true (lobits_of_nat 64 n).
+
+Fixpoint sse_html_escape2_dense buf n mask bytes :=
+  match n with
+  | 0 => buf
+  | n'.+1 => 
+    let c := m128_firstbyte bytes in
+    let rest := m128_restbytes bytes in
+    let: (escptr, escn) := html_escape_byte_table c in
+    let buf' := bufaddmem buf escptr escn in
+    sse_html_escape2_dense buf' n' mask./2 rest
+  end.
+
+Fixpoint sse_html_escape2_aligned buf ptr m nn :=
+  match nn with
+  | 0 => bufaddmem buf ptr m
+  | nn'.+1 =>
+      let p1 := bptradd ptr m in
+      let bytes16 := m128_of_bptr p1 in
+      let c := cmpestrc_ubyte_eqany_ppol_lsig_bitmask chars_to_escape num_chars_to_escape bytes16 16 in
+      let b' := cmpestrm_ubyte_eqany_ppol_lsig_bitmask chars_to_escape num_chars_to_escape bytes16 16 in
+      if c then
+        let b := (lo64_of_m128 b') in
+        let buf1 := bufaddmem buf ptr m in
+        let buf2 := sse_html_escape2_dense buf1 16 b bytes16 in
+        sse_html_escape2_aligned buf2 (bptradd p1 16) 0 nn'
+      else
+        sse_html_escape2_aligned buf ptr (m + 16) nn'
+  end.
+
+Definition sse_html_escape2 buf ptr n :=
+  if n <= 15 then
+    trec_html_escape buf ptr n
+  else
+    let left_align := align_of_bptr 16 ptr in
+    let left_len := if left_align is 0 then 0 else 16 - left_align in
+    let notleft_len := n - left_len in
+    let mid_count := notleft_len %/ 16 in
+    let right_len := notleft_len %% 16 in
+    let buf2 := sse_html_escape2_aligned buf ptr left_len mid_count in
+    trec_html_escape buf2 (bptradd ptr (n - right_len)) right_len.
+

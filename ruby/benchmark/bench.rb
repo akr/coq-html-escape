@@ -1,7 +1,7 @@
 require 'cgi'
 require 'verified_html_escape'
 
-methods = %w[sse_html_escape trec_html_escape CGI.escapeHTML]
+methods = %w[sse_html_escape2 sse_html_escape trec_html_escape CGI.escapeHTML]
 
 puts "size[byte],method,esc_ratio,time[s]"
 

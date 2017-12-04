@@ -119,9 +119,9 @@ Qed.
 
 Definition html_escape_byte_ptr c :=
   if assoc c html_escape_alist is Some p then
-    bptr 0 ("&" ++ p.2 ++ ";")
+    bptr 0 0 ("&" ++ p.2 ++ ";")
   else
-    bptr 0 [:: c].
+    bptr 0 0 [:: c].
 
 Definition html_escape_byte_len c :=
   if assoc c html_escape_alist is Some p then
@@ -140,6 +140,13 @@ Proof.
   case: eqP => [<-|/eqP /negbTE not_apos]; first by [].
   rewrite /html_escape_byte_table /assoc /=.
   by rewrite not_amp not_lt not_gt not_quot not_apos.
+Qed.
+
+Lemma let_html_escape_byte_table_destruct T (B : byteptr -> nat -> T) c :
+  (let: (escptr, escn) := html_escape_byte_table c in B escptr escn) =
+  B (html_escape_byte_ptr c) (html_escape_byte_len c).
+Proof.
+  by rewrite html_escape_byte_split.
 Qed.
 
 Lemma i_of_html_escape_byte_ptr c : i_of_bptr (html_escape_byte_ptr c) = 0.
@@ -166,9 +173,9 @@ Proof.
   by rewrite cats0.
 Qed.
 
-Lemma trec_html_escape_correct1 s buf i j :
+Lemma trec_html_escape_correct1 addr s buf i j :
   i + j = size s ->
-  s_of_buf (trec_html_escape (bufctr buf) (bptr i s) j) =
+  s_of_buf (trec_html_escape (bufctr buf) (bptr addr i s) j) =
   buf ++ html_escape (drop i s).
 Proof.
   elim: j i buf.
@@ -176,7 +183,7 @@ Proof.
     rewrite addn0 => ->.
     by rewrite drop_size cats0.
   move=> j IH i buf Hij /=.
-  move Hc: (bptrget (bptr i s)) => c.
+  move Hc: (bptrget (bptr addr i s)) => c.
   rewrite /bptrget /= in Hc.
   have Hs : take i s ++ c :: drop i.+1 s = s.
     clear IH.
@@ -185,26 +192,27 @@ Proof.
     rewrite [drop i s](drop_nth "000"%char).
       by rewrite -Hc.
     by rewrite -Hij addnS ltnS leq_addr.
-  rewrite html_escape_byte_split /=.
-  rewrite -{2}[s]Hs drop_size_cat; last first.
-    rewrite size_takel; first by [].
-    by rewrite -Hij leq_addr.
-  rewrite html_escape_cons /= catA.
-  rewrite /bptradd /= addn1.
-  rewrite /bufaddmem /= i_of_html_escape_byte_ptr drop0.
-  rewrite /html_escape_byte_ptr.
-  rewrite /html_escape_byte_len.
-  rewrite /html_escape_byte.
-  case: (assoc c html_escape_alist) => [p|] /=.
-    rewrite IH; last by rewrite addSnnS.
-    congr ((buf ++ "&"%char :: _) ++ html_escape (drop i.+1 s)).
-    rewrite (_ : (size p.2).+1 = (size (p.2 ++ [:: ";"%char]))).
-      by rewrite take_size.
-    by rewrite size_cat /= addn1.
-  by rewrite IH; last by rewrite addSnnS.
+  rewrite html_escape_byte_split.
+  rewrite let_bptr_destruct.
+  rewrite i_of_html_escape_byte_ptr.
+  rewrite drop0.
+  rewrite take_html_escape_byte_len_ptr.
+  rewrite s_of_html_escape_byteptr.
+  rewrite IH; last first.
+    by rewrite addn1 addSnnS.
+  rewrite -catA.
+  congr (buf ++ _).
+  rewrite -html_escape_cat.
+  congr (html_escape _).
+  rewrite Hc.
+  rewrite -{2}Hs.
+  rewrite drop_size_cat.
+    by rewrite addn1.
+  rewrite size_takel; first by [].
+  by rewrite -Hij leq_addr.
 Qed.
 
-Lemma trec_html_escape_correct s : trec_html_escape_stub s = html_escape s.
+Lemma trec_html_escape_correct addr s : trec_html_escape_stub addr s = html_escape s.
 Proof.
   rewrite /trec_html_escape_stub.
   by rewrite trec_html_escape_correct1; first rewrite drop0.
@@ -404,8 +412,9 @@ Proof.
   by move: H => /= /andP [] _ ->.
 Qed.
 
-Lemma sse_html_escape_correct1 s buf i m n : i + m + n = size s ->
-  s_of_buf (sse_html_escape (bufctr buf) (bptr i s) m n) =
+(*
+Lemma sse_html_escape_correct1 addr s buf i m n : i + m + n = size s ->
+  s_of_buf (sse_html_escape (bufctr buf) (bptr addr i s) m n) =
   buf ++ take m (drop i s) ++ html_escape (drop (i + m) s).
 Proof.
   elim/ltn_wf_ind: n i m buf.
@@ -413,6 +422,13 @@ Proof.
     rewrite addn0 => ->.
     by rewrite drop_size cats0.
   move=> Himn.
+  rewrite !html_escape_byte_split.
+  rewrite !let_bptr_destruct.
+  
+  rewrite (_ : (let '(escptr, escn) := _ in _) =
+      trec_html_escape
+        (bufaddmem (bufctr buf) (bptr i s) m)
+        (bptradd (bptr i s) m) n.+1); last by [].
   rewrite (_ : (let '(escptr, escn) := _ in _) =
       trec_html_escape
         (bufaddmem (bufctr buf) (bptr i s) m)
@@ -523,3 +539,4 @@ Proof.
   rewrite /sse_html_escape_stub.
   by rewrite sse_html_escape_correct1; first rewrite take0 drop0.
 Qed.
+*)

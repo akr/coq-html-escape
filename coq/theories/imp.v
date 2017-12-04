@@ -298,30 +298,35 @@ Definition m128_restbytes m :=
 Definition popcount64 (n : nat) :=
   count_mem true (lobits_of_nat 64 n).
 
-Fixpoint sse_html_escape2_dense buf n mask bytes :=
-  match n with
-  | 0 => buf
-  | n'.+1 => 
-    let c := m128_firstbyte bytes in
-    let rest := m128_restbytes bytes in
-    let: (escptr, escn) := html_escape_byte_table c in
-    let buf' := bufaddmem buf escptr escn in
-    sse_html_escape2_dense buf' n' mask./2 rest
+Fixpoint sse_html_escape2_dense buf ptr m i mask bytes :=
+  match i with
+  | 0 => (buf, ptr, m)
+  | i'.+1 =>
+    if odd mask then
+      let buf1 := if m is 0 then buf else bufaddmem buf ptr m in
+      let c := m128_firstbyte bytes in
+      let rest := m128_restbytes bytes in
+      let: (escptr, escn) := html_escape_byte_table c in
+      let buf2 := bufaddmem buf1 escptr escn in
+      let ptr2 := bptradd ptr m.+1 in
+      sse_html_escape2_dense buf2 ptr2 0 i' mask./2 rest
+    else
+      let rest := m128_restbytes bytes in
+      sse_html_escape2_dense buf ptr m.+1 i' mask./2 rest
   end.
 
-Fixpoint sse_html_escape2_aligned buf ptr m nn :=
+Fixpoint sse_html_escape2_aligned buf ptr m nn {struct nn} :=
   match nn with
-  | 0 => bufaddmem buf ptr m
+  | 0 => (buf, ptr, m)
   | nn'.+1 =>
       let p1 := bptradd ptr m in
       let bytes16 := m128_of_bptr p1 in
       let c := cmpestrc_ubyte_eqany_ppol_lsig_bitmask chars_to_escape num_chars_to_escape bytes16 16 in
-      let b' := cmpestrm_ubyte_eqany_ppol_lsig_bitmask chars_to_escape num_chars_to_escape bytes16 16 in
+      let mask' := cmpestrm_ubyte_eqany_ppol_lsig_bitmask chars_to_escape num_chars_to_escape bytes16 16 in
       if c then
-        let b := (lo64_of_m128 b') in
-        let buf1 := bufaddmem buf ptr m in
-        let buf2 := sse_html_escape2_dense buf1 16 b bytes16 in
-        sse_html_escape2_aligned buf2 (bptradd p1 16) 0 nn'
+        let mask := (lo64_of_m128 mask') in
+        let: (buf2, ptr2, m2) := sse_html_escape2_dense buf ptr m 16 mask bytes16 in
+        sse_html_escape2_aligned buf2 ptr2 m2 nn'
       else
         sse_html_escape2_aligned buf ptr (m + 16) nn'
   end.
@@ -332,9 +337,13 @@ Definition sse_html_escape2 buf ptr n :=
   else
     let left_align := align_of_bptr 16 ptr in
     let left_len := if left_align is 0 then 0 else 16 - left_align in
-    let notleft_len := n - left_len in
-    let mid_count := notleft_len %/ 16 in
-    let right_len := notleft_len %% 16 in
-    let buf2 := sse_html_escape2_aligned buf ptr left_len mid_count in
-    trec_html_escape buf2 (bptradd ptr (n - right_len)) right_len.
+    let buf2 := trec_html_escape buf ptr left_len in
+    let ptr2 := bptradd ptr left_len in
+    let n2 := n - left_len in
+    let mid_count := n2 %/ 16 in
+    let right_len := n2 %% 16 in
+    let: (buf3, ptr3, m3) := sse_html_escape2_aligned buf2 ptr2 0 mid_count in
+    let buf4 := if m3 is 0 then buf3 else bufaddmem buf3 ptr3 m3 in
+    let ptr4 := bptradd ptr (n2 - right_len) in
+    trec_html_escape buf4 ptr4 right_len.
 

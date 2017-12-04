@@ -27,6 +27,7 @@ typedef uint64_t nat;
 #define n2_modn(a,b) ((a)%(b))
 #define n2_leq(a,b) ((a)<=(b))
 #define n1_half(a) ((a)/2)
+#define n1_odd(a) ((a)&1)
 
 typedef unsigned char ascii;
 
@@ -61,6 +62,22 @@ typedef struct {
 } prod_byteptr_nat;
 #define field0_pair_prod_byteptr_nat(pair) ((pair).p)
 #define field1_pair_prod_byteptr_nat(pair) ((pair).n)
+
+typedef struct {
+  buffer b;
+  byteptr p;
+} prod_buffer_byteptr;
+#define field0_pair_prod_buffer_byteptr(pair) ((pair).b)
+#define field1_pair_prod_buffer_byteptr(pair) ((pair).p)
+#define n2_pair_buffer_byteptr(b, p) ((prod_buffer_byteptr){ b, p })
+
+typedef struct {
+  prod_buffer_byteptr bp;
+  nat n;
+} prod_prod_buffer_byteptr_nat;
+#define field0_pair_prod_prod_buffer_byteptr_nat(pair) ((pair).bp)
+#define field1_pair_prod_prod_buffer_byteptr_nat(pair) ((pair).n)
+#define n2_pair_prod_buffer_byteptr_nat(bp, n) ((prod_prod_buffer_byteptr_nat){ bp, n })
 
 prod_byteptr_nat html_escape_byte_tbl[256] = {
   { "\x00", 1 }, /* "\x00" */

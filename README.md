@@ -9,6 +9,14 @@ http://rubykaigi.org/2017/presentations/tanaka_akr.html
 This project contains a Ruby extention library for
 HTML escape function using SSE verified by Coq.
 
+## How to Build
+
+  cd coq
+  make
+  cd ../ruby
+  ruby extconf.rb
+  make
+
 ## Directory Structure
 
 - slide/2017-09-20-akr-rubykaigi.pdf : slide for RubyKaigi 2017

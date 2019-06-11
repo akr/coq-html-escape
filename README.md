@@ -9,6 +9,24 @@ http://rubykaigi.org/2017/presentations/tanaka_akr.html
 This project contains a Ruby extention library for
 HTML escape function using SSE verified by Coq.
 
+## Home Page
+
+https://github.com/akr/coq-html-escape
+
+## Requirements
+
+- Coq 8.9 (Coq 8.8 doesn't work)
+- codegen plugin https://github.com/akr/codegen
+- monadification plugin https://github.com/akr/monadification
+
+## How to Build
+
+  cd coq
+  make
+  cd ../ruby
+  ruby extconf.rb
+  make
+
 ## Directory Structure
 
 - slide/2017-09-20-akr-rubykaigi.pdf : slide for RubyKaigi 2017

@@ -112,7 +112,7 @@ Proof.
   case: d => [|d H]; first by [].
   rewrite /dvdn in H.
   rewrite {1}(divn_eq m d.+1) -addnS divnMDl; last by [].
-  rewrite [X in _ + X](_ : _ = 0); first by [].
+  rewrite [X in _ + X](_ : _ = 0); first apply addn0.
   apply divn_small.
   rewrite /dvdn -[0](@modn_small 0 d.+1) in H; last by [].
   rewrite -(eqn_modDr d) addSnnS add0n modnDr [d %% d.+1]modn_small in H;last by [].
